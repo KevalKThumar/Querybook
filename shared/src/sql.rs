@@ -123,6 +123,17 @@ pub fn delete_row(table: &str, key: &RowKey) -> String {
     format!("DELETE FROM {} WHERE {}", quote_ident(table), key.condition())
 }
 
+/// Copy one row into a new row; params: the row's key cells. `columns` should
+/// be the writable columns minus the rowid alias, so the copy gets a fresh key.
+pub fn duplicate_row(table: &str, key: &RowKey, columns: &[String]) -> String {
+    if columns.is_empty() {
+        return insert_default(table);
+    }
+    let cols: Vec<String> = columns.iter().map(|c| quote_ident(c)).collect();
+    let cols = cols.join(", ");
+    format!("INSERT INTO {t} ({cols}) SELECT {cols} FROM {t} WHERE {}", key.condition(), t = quote_ident(table))
+}
+
 pub fn insert_default(table: &str) -> String {
     format!("INSERT INTO {} DEFAULT VALUES", quote_ident(table))
 }
@@ -276,6 +287,15 @@ mod tests {
             create_table("t", &pk2, true),
             "CREATE TABLE \"t\" (\n\t\"a\",\n\t\"b\" DEFAULT current_timestamp,\n\tPRIMARY KEY (\"a\", \"b\")\n) WITHOUT ROWID"
         );
+    }
+
+    #[test]
+    fn duplicate() {
+        assert_eq!(
+            duplicate_row("t", &RowKey::Rowid, &["a".into(), "b c".into()]),
+            r#"INSERT INTO "t" ("a", "b c") SELECT "a", "b c" FROM "t" WHERE _rowid_ = ?"#
+        );
+        assert_eq!(duplicate_row("t", &RowKey::Rowid, &[]), r#"INSERT INTO "t" DEFAULT VALUES"#);
     }
 
     #[test]

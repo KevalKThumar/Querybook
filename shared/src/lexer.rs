@@ -11,7 +11,7 @@ pub enum Tok {
     Other,
 }
 
-const KEYWORDS: &[&str] = &[
+pub(crate) const KEYWORDS: &[&str] = &[
     "ABORT", "ACTION", "ADD", "AFTER", "ALL", "ALTER", "ALWAYS", "ANALYZE", "AND", "AS", "ASC", "ATTACH",
     "AUTOINCREMENT", "BEFORE", "BEGIN", "BETWEEN", "BY", "CASCADE", "CASE", "CAST", "CHECK", "COLLATE", "COLUMN",
     "COMMIT", "CONFLICT", "CONSTRAINT", "CREATE", "CROSS", "CURRENT", "CURRENT_DATE", "CURRENT_TIME",
@@ -28,7 +28,7 @@ const KEYWORDS: &[&str] = &[
     "VACUUM", "VALUES", "VIEW", "VIRTUAL", "WHEN", "WHERE", "WINDOW", "WITH", "WITHOUT",
 ];
 
-fn is_word_byte(b: u8) -> bool {
+pub(crate) fn is_word_byte(b: u8) -> bool {
     b == b'_' || b == b'$' || b.is_ascii_alphanumeric() || b >= 0x80
 }
 
@@ -116,6 +116,32 @@ pub fn has_keyword(src: &str, words: &[&str]) -> bool {
     tokenize(src).iter().any(|(t, s)| *t == Tok::Keyword && words.iter().any(|w| w.eq_ignore_ascii_case(s)))
 }
 
+/// Byte range of the statement containing `offset`, splitting on `;` outside
+/// strings and comments. A caret just after the last `;` belongs to the
+/// statement before it.
+pub fn statement_at(src: &str, offset: usize) -> std::ops::Range<usize> {
+    let mut start = 0;
+    let mut pos = 0;
+    for (t, s) in tokenize(src) {
+        if t == Tok::Other {
+            for (i, ch) in s.char_indices() {
+                if ch == ';' {
+                    let semi = pos + i;
+                    if offset <= semi {
+                        return start..semi;
+                    }
+                    start = semi + 1;
+                }
+            }
+        }
+        pos += s.len();
+    }
+    if start > 0 && src[start..].trim().is_empty() {
+        return statement_at(src, start - 1);
+    }
+    start..src.len()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -144,6 +170,17 @@ mod tests {
         let words = ["DELETE", "DROP"];
         assert!(!has_keyword("SELECT 'drop' -- delete\nFROM t", &words));
         assert!(has_keyword("select 1; delete from t", &words));
+    }
+
+    #[test]
+    fn statement_at_caret() {
+        let src = "select 1; select ';' as x;\n\nselect 3";
+        let at = |o: usize| src[statement_at(src, o)].trim().to_string();
+        assert_eq!(at(3), "select 1");
+        assert_eq!(at(12), "select ';' as x");
+        assert_eq!(at(src.len()), "select 3");
+        let trailing = "select 1;\nselect 2;  ";
+        assert_eq!(trailing[statement_at(trailing, trailing.len())].trim(), "select 2");
     }
 
     #[test]

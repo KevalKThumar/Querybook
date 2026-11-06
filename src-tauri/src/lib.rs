@@ -206,6 +206,14 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(Registry::default())
+        .setup(|app| {
+            // `querybook path/to.db` opens that file in the first window.
+            if let Some(path) = std::env::args_os().nth(1).map(PathBuf::from).filter(|p| p.is_file()) {
+                let path = fs::canonicalize(&path).unwrap_or(path);
+                app.state::<Registry>().insert("main", Session::new(Some(path)));
+            }
+            Ok(())
+        })
         .on_window_event(|window, event| match event {
             WindowEvent::CloseRequested { api, .. } => {
                 let pending = window.state::<Registry>().get(window.label()).is_some_and(|s| s.has_pending());
