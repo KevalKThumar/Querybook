@@ -16,7 +16,7 @@ use shared::{AppError, Cell, CsvPreview, ExecOutcome, KeyInput, OpenOutcome, Res
 use crate::database::database_constant::{
     CMD_CANCEL, CMD_CONNECT, CMD_CSV_PREVIEW, CMD_EXECUTE, CMD_EXEC_SCRIPT, CMD_EXPORT_CSV, CMD_EXPORT_SQL_DUMP,
     CMD_IMPORT_CSV, CMD_IMPORT_SQL, CMD_OPEN_DIALOG, CMD_OPEN_PATH, CMD_PICK_IMPORT_FILE, CMD_QUERY,
-    CMD_SESSION_INFO, CMD_SET_ENCRYPTION, MAX_RECENT_FILES, SQL_BEGIN_EDIT, SQL_LOAD_SCHEMA, SQL_REVERT_CHANGES,
+    CMD_SESSION_INFO, CMD_SET_ENCRYPTION, HISTORY_SEPARATOR, MAX_HISTORY, MAX_RECENT_FILES, STORAGE_HISTORY_PREFIX, SQL_BEGIN_EDIT, SQL_LOAD_SCHEMA, SQL_REVERT_CHANGES,
     SQL_TABLE_COLUMNS, SQL_WRITE_CHANGES, STORAGE_RECENT_FILES,
 };
 use crate::database::database_structure::{
@@ -205,6 +205,25 @@ impl DatabaseService {
         list.insert(0, path.to_string());
         list.truncate(MAX_RECENT_FILES);
         LocalStorageService::set(STORAGE_RECENT_FILES, &list.join("\n"));
+    }
+
+    /// SQL run in this database, most recent first.
+    pub fn history(db_path: &str) -> Vec<String> {
+        LocalStorageService::get(&format!("{STORAGE_HISTORY_PREFIX}{db_path}"))
+            .map(|s| s.split(HISTORY_SEPARATOR).filter(|q| !q.is_empty()).map(String::from).collect())
+            .unwrap_or_default()
+    }
+
+    pub fn push_history(db_path: &str, sql: &str) {
+        let sql = sql.trim();
+        if sql.is_empty() {
+            return;
+        }
+        let mut list = Self::history(db_path);
+        list.retain(|q| q != sql);
+        list.insert(0, sql.to_string());
+        list.truncate(MAX_HISTORY);
+        LocalStorageService::set(&format!("{STORAGE_HISTORY_PREFIX}{db_path}"), &list.join(&HISTORY_SEPARATOR.to_string()));
     }
 
     pub fn remove_recent(path: &str) {

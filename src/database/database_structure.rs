@@ -2,6 +2,9 @@
 //!
 //! Author: Keval Thumar
 
+use std::collections::BTreeSet;
+use std::ops::Range;
+
 use serde::Serialize;
 use shared::sql::RowKey;
 use shared::{Cell, KeyInput};
@@ -130,6 +133,88 @@ pub enum DropTarget {
     Object,
     Column(String),
     Index(String),
+}
+
+/// What is selected in a `<Grid/>`. Row indexes are display positions.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub enum GridSelection {
+    #[default]
+    None,
+    /// The rectangle between `anchor` and `focus` (row, column); one cell when equal.
+    Cells { anchor: (usize, usize), focus: (usize, usize) },
+    /// Whole rows picked in the row-number gutter.
+    Rows { rows: BTreeSet<usize>, anchor: usize },
+}
+
+impl GridSelection {
+    pub fn cell(at: (usize, usize)) -> Self {
+        GridSelection::Cells { anchor: at, focus: at }
+    }
+
+    pub fn row(r: usize) -> Self {
+        GridSelection::Rows { rows: BTreeSet::from([r]), anchor: r }
+    }
+
+    /// The keyboard-focused cell.
+    pub fn focus(&self) -> Option<(usize, usize)> {
+        match self {
+            GridSelection::Cells { focus, .. } => Some(*focus),
+            GridSelection::Rows { anchor, .. } => Some((*anchor, 0)),
+            GridSelection::None => None,
+        }
+    }
+
+    /// (rows, columns) covered by a cell selection.
+    pub fn rect(&self) -> Option<(Range<usize>, Range<usize>)> {
+        match self {
+            GridSelection::Cells { anchor, focus } => Some((
+                anchor.0.min(focus.0)..anchor.0.max(focus.0) + 1,
+                anchor.1.min(focus.1)..anchor.1.max(focus.1) + 1,
+            )),
+            _ => None,
+        }
+    }
+
+    pub fn has_cell(&self, r: usize, c: usize) -> bool {
+        match self {
+            GridSelection::Rows { rows, .. } => rows.contains(&r),
+            _ => self.rect().is_some_and(|(rs, cs)| rs.contains(&r) && cs.contains(&c)),
+        }
+    }
+
+    pub fn has_row(&self, r: usize) -> bool {
+        matches!(self, GridSelection::Rows { rows, .. } if rows.contains(&r))
+    }
+
+    /// Every row touched by the selection, ascending.
+    pub fn row_list(&self) -> Vec<usize> {
+        match self {
+            GridSelection::Rows { rows, .. } => rows.iter().copied().collect(),
+            _ => self.rect().map(|(rs, _)| rs.collect()).unwrap_or_default(),
+        }
+    }
+}
+
+/// What a mouse drag in the grid is extending.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum GridDrag {
+    Cells,
+    Rows,
+}
+
+/// Which context menu the grid shows.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum GridMenu {
+    Rows,
+    Cells,
+}
+
+/// Clipboard formats offered by the grid.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum CopyKind {
+    Plain,
+    WithHeaders,
+    Sql,
 }
 
 // ── IPC request bodies (field names = Tauri command argument names) ──

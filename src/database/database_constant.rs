@@ -59,6 +59,21 @@ pub const ROWNUM_WIDTH: f64 = 56.0;
 pub const CHUNK_ROWS: usize = 200;
 /// Extra rows rendered above/below the viewport.
 pub const OVERSCAN_ROWS: usize = 10;
+/// "Adjust rows to contents": text metrics used to estimate wrapped lines.
+pub const GRID_LINE_HEIGHT: f64 = 17.0;
+pub const GRID_CHAR_WIDTH: f64 = 7.0;
+pub const GRID_MAX_FIT_LINES: usize = 12;
+
+// SQL editor
+/// Autocomplete list length.
+pub const SUGGEST_LIMIT: usize = 12;
+/// Padding of the editor layers (must match `.sqled-layer` padding: $spacing-md).
+pub const EDITOR_PADDING: f64 = 12.0;
+/// Query history per database (localStorage key = prefix + db path).
+pub const STORAGE_HISTORY_PREFIX: &str = "querybook.history:";
+pub const MAX_HISTORY: usize = 50;
+/// Separates history entries in storage (queries may contain newlines).
+pub const HISTORY_SEPARATOR: char = '\u{1e}';
 
 // SQLCipher 4 defaults — the only settings Querybook uses (shown read-only).
 pub const CIPHER_DEFAULTS: [(&str, &str); 5] = [

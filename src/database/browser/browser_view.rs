@@ -187,7 +187,7 @@ pub fn browser_view(
                                             <StructureView name=name schema=schema in_txn=in_txn data_version=data_version on_changed=on_changed on_open=open_tab />
                                         }.into_any(),
                                         TabKind::Sql(_) => view! {
-                                            <SqlEditor in_txn=in_txn on_changed=on_changed />
+                                            <SqlEditor in_txn=in_txn on_changed=on_changed schema=schema data_version=data_version db_path=file_path />
                                         }.into_any(),
                                     };
                                     view! {

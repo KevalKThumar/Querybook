@@ -1,16 +1,13 @@
-//! Template for the data grid: toolbar, sticky header + filter row, virtual body.
+//! Template for the data grid: toolbar + shared `<Grid/>` + delete confirmation.
 //!
 //! Author: Keval Thumar
 
-use leptos::html::Input;
 use leptos::prelude::*;
 use shared::Cell;
 
-use crate::database::database_constant::{COLUMN_WIDTH, ROWNUM_WIDTH, ROW_HEIGHT};
-
-fn px(v: f64) -> String {
-    format!("{v}px")
-}
+use crate::database::components::grid::grid_component::Grid;
+use crate::database::database_structure::GridSelection;
+use crate::shared::dialogs::confirmation_dialog::confirmation_dialog_component::ConfirmationDialog;
 
 #[allow(clippy::too_many_arguments)]
 pub fn data_grid_view(
@@ -18,29 +15,29 @@ pub fn data_grid_view(
     filters: Signal<Vec<String>>,
     sort: Signal<Option<(String, bool)>>,
     total: Signal<usize>,
-    visible: Memo<Vec<usize>>,
     cell_at: Callback<(usize, usize), Option<Cell>>,
-    selected: Signal<Option<(usize, usize)>>,
-    editing: Signal<Option<(usize, usize)>>,
-    edit_value: RwSignal<String>,
+    selection: RwSignal<GridSelection>,
     editable: Signal<bool>,
-    on_scroll: Callback<(f64, f64)>,
+    table_name: Signal<String>,
+    selection_info: Signal<String>,
+    delete_open: RwSignal<bool>,
+    delete_message: Signal<String>,
+    on_range: Callback<(usize, usize)>,
     on_sort: Callback<usize>,
     on_filter: Callback<(usize, String)>,
-    on_select: Callback<(usize, usize)>,
-    on_start_edit: Callback<(usize, usize)>,
-    on_commit_edit: Callback<()>,
-    on_cancel_edit: Callback<()>,
-    on_set_null: Callback<()>,
+    on_filter_value: Callback<(usize, Cell)>,
+    on_edit: Callback<(usize, usize, Cell)>,
+    on_delete_rows: Callback<Vec<usize>>,
+    on_duplicate_rows: Callback<Vec<usize>>,
+    on_confirm_delete: Callback<()>,
+    on_cancel_delete: Callback<()>,
     on_add_row: Callback<()>,
-    on_delete_row: Callback<()>,
+    on_delete_selected: Callback<()>,
+    on_null_selected: Callback<()>,
     on_refresh: Callback<()>,
     on_export: Callback<()>,
 ) -> impl IntoView {
-    let width = move || px(ROWNUM_WIDTH + columns.with(|c| c.len()) as f64 * COLUMN_WIDTH);
-    let indexed_columns = move || columns.get().into_iter().enumerate().collect::<Vec<_>>();
-    let nothing_selected = move || selected.get().is_none();
-
+    let nothing_selected = move || selection.with(|s| *s == GridSelection::None);
     view! {
         <div class="grid d-flex flex-column h-100">
             <div class="grid-toolbar d-flex align-items-center gap-1 px-2">
@@ -51,10 +48,10 @@ pub fn data_grid_view(
                     <button class="btn btn-sm grid-tool" title="Insert a row" on:click=move |_| on_add_row.run(())>
                         <i class="bi bi-plus-lg"></i>" Row"
                     </button>
-                    <button class="btn btn-sm grid-tool" title="Delete the selected row" disabled=nothing_selected on:click=move |_| on_delete_row.run(())>
+                    <button class="btn btn-sm grid-tool" title="Delete the selected rows (⌫)" disabled=nothing_selected on:click=move |_| on_delete_selected.run(())>
                         <i class="bi bi-dash-lg"></i>" Row"
                     </button>
-                    <button class="btn btn-sm grid-tool" title="Set the selected cell to NULL" disabled=nothing_selected on:click=move |_| on_set_null.run(())>
+                    <button class="btn btn-sm grid-tool" title="Set the selected cells to NULL" disabled=nothing_selected on:click=move |_| on_null_selected.run(())>
                         "NULL"
                     </button>
                 </Show>
@@ -64,126 +61,37 @@ pub fn data_grid_view(
                 <button class="btn btn-sm grid-tool" title="Export to CSV" on:click=move |_| on_export.run(())>
                     <i class="bi bi-filetype-csv"></i>" Export"
                 </button>
-                <span class="ms-auto grid-count">{move || format!("{} rows", total.get())}</span>
+                <span class="ms-auto grid-count">{move || selection_info.get()}</span>
+                <span class="grid-count">{move || format!("{} rows", total.get())}</span>
             </div>
-
-            <div
-                class="grid-scroll flex-grow-1"
-                on:scroll=move |ev| {
-                    let el = event_target::<web_sys::HtmlElement>(&ev);
-                    on_scroll.run((el.scroll_top() as f64, el.client_height() as f64));
-                }
-            >
-                // Header + filters stay pinned while the body scrolls.
-                <div class="grid-sticky" style:width=width>
-                    <div class="grid-head">
-                        <div class="grid-rownum">"#"</div>
-                        <For
-                            each=indexed_columns
-                            key=|(i, n)| (*i, n.clone())
-                            children=move |(c, name)| {
-                                let column = name.clone();
-                                let arrow = move || match sort.get() {
-                                    Some((n, false)) if n == column => "bi bi-arrow-up",
-                                    Some((n, true)) if n == column => "bi bi-arrow-down",
-                                    _ => "",
-                                };
-                                view! {
-                                    <div class="grid-th" title=name.clone() on:click=move |_| on_sort.run(c)>
-                                        <span class="text-truncate">{name.clone()}</span>
-                                        <i class=arrow></i>
-                                    </div>
-                                }
-                            }
-                        />
-                    </div>
-                    <div class="grid-filters">
-                        <div class="grid-rownum"><i class="bi bi-funnel"></i></div>
-                        <For
-                            each=indexed_columns
-                            key=|(i, n)| (*i, n.clone())
-                            children=move |(c, _)| view! {
-                                <div class="grid-filter">
-                                    <input
-                                        class="form-control form-control-sm"
-                                        placeholder="Filter"
-                                        title="Text = contains · prefix with = <> > < >= <= to compare"
-                                        prop:value=move || filters.with(|f| f.get(c).cloned().unwrap_or_default())
-                                        on:change=move |ev| on_filter.run((c, event_target_value(&ev)))
-                                    />
-                                </div>
-                            }
-                        />
-                    </div>
-                </div>
-
-                <div class="grid-body" style:height=move || px(total.get() as f64 * ROW_HEIGHT) style:width=width>
-                    <For
-                        each=move || visible.get()
-                        key=|i| *i
-                        children=move |i| view! {
-                            <div
-                                class="grid-row"
-                                class:selected=move || selected.get().is_some_and(|(r, _)| r == i)
-                                style:top=px(i as f64 * ROW_HEIGHT)
-                            >
-                                <div class="grid-rownum">{i + 1}</div>
-                                <For
-                                    each={move || (0..columns.with(|c| c.len())).collect::<Vec<_>>()}
-                                    key=|c| *c
-                                    children=move |c| {
-                                        let cell = move || cell_at.run((i, c));
-                                        let is_editing = move || editing.get() == Some((i, c));
-                                        view! {
-                                            <div
-                                                class="grid-cell"
-                                                class:active=move || selected.get() == Some((i, c))
-                                                class:null=move || matches!(cell(), Some(Cell::Null))
-                                                class:blob=move || matches!(cell(), Some(Cell::Blob(_)))
-                                                class:numeric=move || matches!(cell(), Some(Cell::Int(_) | Cell::Real(_)))
-                                                on:mousedown=move |_| on_select.run((i, c))
-                                                on:dblclick=move |_| on_start_edit.run((i, c))
-                                            >
-                                                <Show
-                                                    when=is_editing
-                                                    fallback=move || view! {
-                                                        <span class="text-truncate">{move || cell().map(|v| v.display()).unwrap_or_default()}</span>
-                                                    }
-                                                >
-                                                    {
-                                                        let input = NodeRef::<Input>::new();
-                                                        input.on_load(|el| {
-                                                            let _ = el.focus();
-                                                            el.select();
-                                                        });
-                                                        view! {
-                                                            <input
-                                                                node_ref=input
-                                                                class="grid-edit"
-                                                                prop:value=move || edit_value.get_untracked()
-                                                                on:input=move |ev| edit_value.set(event_target_value(&ev))
-                                                                on:keydown=move |ev| {
-                                                                    ev.stop_propagation();
-                                                                    match ev.key().as_str() {
-                                                                        "Enter" => on_commit_edit.run(()),
-                                                                        "Escape" => on_cancel_edit.run(()),
-                                                                        _ => {}
-                                                                    }
-                                                                }
-                                                                on:blur=move |_| on_commit_edit.run(())
-                                                            />
-                                                        }
-                                                    }
-                                                </Show>
-                                            </div>
-                                        }
-                                    }
-                                />
-                            </div>
-                        }
-                    />
-                </div>
+            <div class="flex-grow-1 overflow-hidden">
+                <Grid
+                    columns=columns
+                    total=total
+                    cell_at=cell_at
+                    selection=selection
+                    table_name=table_name
+                    editable=editable
+                    on_range=on_range
+                    sort=sort
+                    on_sort=on_sort
+                    filters=filters
+                    on_filter=on_filter
+                    on_edit=on_edit
+                    on_delete_rows=on_delete_rows
+                    on_duplicate_rows=on_duplicate_rows
+                    on_filter_value=on_filter_value
+                />
             </div>
+            <ConfirmationDialog
+                open=delete_open
+                title="Delete records"
+                message=delete_message
+                pos_label="Delete"
+                danger=true
+                on_confirm=on_confirm_delete
+                on_cancel=on_cancel_delete
+            />
         </div>
     }
 }

@@ -69,3 +69,55 @@
 }
 
 .sqled-results { min-height: 0; }
+
+.sqled-history { width: 160px; }
+
+/* Same font as the editor layers; measured once for caret → pixel math. */
+.sqled-measure {
+  position: absolute;
+  top: 0;
+  left: 0;
+  margin: 0;
+  padding: 0;
+  visibility: hidden;
+  pointer-events: none;
+  font-family: $font-mono;
+  font-size: $font-size-sm;
+  line-height: 1.55;
+  white-space: pre;
+}
+
+/* Autocomplete popup under the caret. */
+.sqled-suggest {
+  position: absolute;
+  z-index: $z-dialog;
+  width: 320px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: $spacing-xs;
+  border: 1px solid $border;
+  border-radius: $radius;
+  background: $bg;
+  box-shadow: $shadow-dialog;
+  font-size: $font-size-sm;
+}
+
+.sqled-suggest-item {
+  height: 26px;
+  padding: 0 $spacing-sm;
+  border-radius: $radius-sm;
+  cursor: pointer;
+  font-family: $font-mono;
+
+  > .bi { color: $text-muted; }
+  &:hover { background: $bg-hover; }
+  &.active { background: $primary; color: #fff; }
+  &.active > .bi, &.active .sqled-suggest-detail { color: inherit; }
+}
+
+.sqled-suggest-detail {
+  max-width: 110px;
+  font-family: $font-primary;
+  font-size: $font-size-xs;
+  color: $text-muted;
+}

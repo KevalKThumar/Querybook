@@ -4,30 +4,62 @@
 
 use leptos::html::{Pre, Textarea};
 use leptos::prelude::*;
-use shared::ResultSet;
+use shared::complete::{SuggestKind, Suggestion};
+use shared::Cell;
 
-use crate::database::components::result_grid::result_grid_component::ResultGrid;
+use crate::database::components::grid::grid_component::Grid;
 use crate::database::components::sql_code::sql_code_component::SqlCode;
+use crate::database::database_structure::GridSelection;
+
+fn kind_icon(kind: SuggestKind) -> &'static str {
+    match kind {
+        SuggestKind::Column => "bi bi-layout-three-columns",
+        SuggestKind::Table => "bi bi-table",
+        SuggestKind::Function => "bi bi-braces",
+        SuggestKind::Keyword => "bi bi-type",
+    }
+}
 
 #[allow(clippy::too_many_arguments)]
 pub fn sql_editor_view(
     highlighted: Signal<String>,
     running: Signal<bool>,
     status: Signal<Option<(bool, String)>>,
-    result: Signal<Option<ResultSet>>,
+    history_labels: Signal<Vec<String>>,
+    suggestions: Memo<Vec<Suggestion>>,
+    suggest_index: Signal<usize>,
+    popup_at: Signal<Option<(f64, f64)>>,
+    result_columns: Signal<Vec<String>>,
+    result_total: Signal<usize>,
+    cell_at: Callback<(usize, usize), Option<Cell>>,
+    selection: RwSignal<GridSelection>,
+    result_table: Signal<String>,
     textarea: NodeRef<Textarea>,
     overlay: NodeRef<Pre>,
-    on_run: Callback<()>,
+    measure: NodeRef<Pre>,
+    on_run_all: Callback<()>,
+    on_run_current: Callback<()>,
+    on_explain: Callback<()>,
     on_stop: Callback<()>,
+    on_history: Callback<usize>,
     on_input: Callback<String>,
     on_keydown: Callback<web_sys::KeyboardEvent>,
+    on_keyup: Callback<web_sys::KeyboardEvent>,
+    on_caret_moved: Callback<()>,
     on_scroll: Callback<()>,
+    on_pick: Callback<usize>,
 ) -> impl IntoView {
     view! {
         <div class="sqled d-flex flex-column h-100">
             <div class="sqled-toolbar d-flex align-items-center gap-2 px-2">
-                <button class="btn btn-sm btn-primary" title="Run all, or the selection (⌘↵)" disabled=move || running.get() on:click=move |_| on_run.run(())>
-                    <i class="bi bi-play-fill"></i>" Run"
+                <button class="btn btn-sm btn-primary" title="Run everything, or the selection" disabled=move || running.get() on:click=move |_| on_run_all.run(())>
+                    <i class="bi bi-play-fill"></i>" Run all"
+                </button>
+                <button class="btn btn-sm btn-outline-primary" title="Run the statement under the cursor (⇧↵ or ⌘↵)" disabled=move || running.get() on:click=move |_| on_run_current.run(())>
+                    <i class="bi bi-cursor-text"></i>" Run current"
+                </button>
+                <button class="btn btn-sm btn-outline-secondary" title="EXPLAIN QUERY PLAN for the current statement" disabled=move || running.get() on:click=move |_| on_explain.run(())>
+                    <i class="bi bi-diagram-2"></i>" Explain"
                 </button>
                 <Show when=move || running.get() fallback=|| ()>
                     <button class="btn btn-sm btn-outline-danger" title="Cancel the running query" on:click=move |_| on_stop.run(())>
@@ -35,7 +67,27 @@ pub fn sql_editor_view(
                     </button>
                     <span class="spinner-border spinner-border-sm text-secondary"></span>
                 </Show>
-                <span class="sqled-hint ms-auto">"⌘↵ run · select text to run only that"</span>
+                <select
+                    class="form-select form-select-sm sqled-history"
+                    title="Query history for this database"
+                    prop:value=""
+                    on:change=move |ev| {
+                        if let Ok(i) = event_target_value(&ev).parse::<usize>() {
+                            on_history.run(i);
+                        }
+                    }
+                >
+                    <option value="" selected=true disabled=true>"History"</option>
+                    {move || {
+                        history_labels
+                            .get()
+                            .into_iter()
+                            .enumerate()
+                            .map(|(i, label)| view! { <option value=i.to_string()>{label}</option> })
+                            .collect_view()
+                    }}
+                </select>
+                <span class="sqled-hint ms-auto">"⇧↵ run current · ⌃Space suggest"</span>
             </div>
 
             <div class="sqled-input">
@@ -45,11 +97,44 @@ pub fn sql_editor_view(
                     class="sqled-layer sqled-textarea"
                     spellcheck="false"
                     autocomplete="off"
-                    placeholder="-- Write SQL here"
+                    placeholder="-- Write SQL here. ⇧↵ runs the statement under the cursor."
                     on:input=move |ev| on_input.run(event_target_value(&ev))
                     on:keydown=move |ev| on_keydown.run(ev)
+                    on:keyup=move |ev| on_keyup.run(ev)
+                    on:click=move |_| on_caret_moved.run(())
+                    on:blur=move |_| on_caret_moved.run(())
                     on:scroll=move |_| on_scroll.run(())
                 ></textarea>
+                // Hidden 100×10 block of the editor font: char width / line height for the popup.
+                <pre class="sqled-measure" node_ref=measure aria-hidden="true">
+                    {(0..10).map(|_| "M".repeat(100)).collect::<Vec<_>>().join("\n")}
+                </pre>
+                <Show when=move || popup_at.get().is_some() fallback=|| ()>
+                    <div
+                        class="sqled-suggest"
+                        style:left=move || format!("{}px", popup_at.get().map_or(0.0, |p| p.0))
+                        style:top=move || format!("{}px", popup_at.get().map_or(0.0, |p| p.1))
+                    >
+                        <For
+                            each={move || suggestions.get().into_iter().enumerate().collect::<Vec<_>>()}
+                            key=|(i, s)| (*i, s.label.clone(), s.detail.clone())
+                            children=move |(i, s)| view! {
+                                <div
+                                    class="sqled-suggest-item d-flex align-items-center gap-2"
+                                    class:active=move || suggest_index.get() == i
+                                    on:mousedown=move |ev| {
+                                        ev.prevent_default();
+                                        on_pick.run(i);
+                                    }
+                                >
+                                    <i class=kind_icon(s.kind)></i>
+                                    <span class="flex-grow-1 text-truncate">{s.label.clone()}</span>
+                                    <span class="sqled-suggest-detail text-truncate">{s.detail.clone()}</span>
+                                </div>
+                            }
+                        />
+                    </div>
+                </Show>
             </div>
 
             <div class="sqled-status px-2" class:text-danger=move || status.get().is_some_and(|(err, _)| err)>
@@ -57,7 +142,13 @@ pub fn sql_editor_view(
             </div>
 
             <div class="sqled-results flex-grow-1">
-                <ResultGrid result=result />
+                <Grid
+                    columns=result_columns
+                    total=result_total
+                    cell_at=cell_at
+                    selection=selection
+                    table_name=result_table
+                />
             </div>
         </div>
     }

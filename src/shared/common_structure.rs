@@ -61,3 +61,55 @@ impl ThemeMode {
 pub struct ThemeService {
     pub mode: RwSignal<ThemeMode>,
 }
+
+/// One entry of a `<ContextMenu/>`. Built fresh each time the menu opens.
+#[derive(Clone)]
+pub enum MenuItem {
+    Action {
+        label: String,
+        /// Bootstrap Icons class.
+        icon: &'static str,
+        /// Keyboard hint shown on the right, e.g. "⌘C".
+        shortcut: &'static str,
+        enabled: bool,
+        /// Some(_) renders a check mark column (toggle items).
+        checked: Option<bool>,
+        danger: bool,
+        on_select: Callback<()>,
+    },
+    Divider,
+}
+
+impl MenuItem {
+    pub fn action(label: impl Into<String>, icon: &'static str, on_select: Callback<()>) -> Self {
+        MenuItem::Action { label: label.into(), icon, shortcut: "", enabled: true, checked: None, danger: false, on_select }
+    }
+
+    pub fn shortcut(mut self, keys: &'static str) -> Self {
+        if let MenuItem::Action { shortcut, .. } = &mut self {
+            *shortcut = keys;
+        }
+        self
+    }
+
+    pub fn enabled(mut self, on: bool) -> Self {
+        if let MenuItem::Action { enabled, .. } = &mut self {
+            *enabled = on;
+        }
+        self
+    }
+
+    pub fn checked(mut self, on: bool) -> Self {
+        if let MenuItem::Action { checked, .. } = &mut self {
+            *checked = Some(on);
+        }
+        self
+    }
+
+    pub fn danger(mut self) -> Self {
+        if let MenuItem::Action { danger, .. } = &mut self {
+            *danger = true;
+        }
+        self
+    }
+}

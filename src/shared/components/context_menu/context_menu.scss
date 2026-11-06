@@ -1,0 +1,49 @@
+@use "../../../../styles/variables" as *;
+
+/* Invisible full-window layer: any click outside the menu closes it. */
+.ctx-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: $z-dialog-bg;
+}
+
+.ctx-menu {
+  position: fixed;
+  z-index: $z-dialog;
+  width: 230px;
+  padding: $spacing-xs;
+  border: 1px solid $border;
+  border-radius: $radius;
+  background: $bg;
+  box-shadow: $shadow-dialog;
+  font-size: $font-size-sm;
+}
+
+.ctx-item {
+  width: 100%;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  padding: 0 $spacing-sm;
+  border: none;
+  border-radius: $radius-sm;
+  background: none;
+  color: $text;
+  text-align: left;
+
+  &:hover:not(:disabled) { background: $primary; color: #fff; }
+  &:hover:not(:disabled) .ctx-shortcut { color: inherit; }
+  &:disabled { opacity: 0.4; }
+  &.danger:not(:hover) { color: $danger; }
+}
+
+.ctx-icon { width: 16px; text-align: center; }
+.ctx-label { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ctx-shortcut { color: $text-muted; font-size: $font-size-xs; }
+
+.ctx-divider {
+  height: 1px;
+  margin: $spacing-xs 0;
+  background: $border;
+}

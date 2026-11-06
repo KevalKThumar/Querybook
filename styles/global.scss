@@ -16,6 +16,7 @@
 
 // ── Shared: dialogs & components ──
 @use "../src/shared/components/toast/toast";
+@use "../src/shared/components/context_menu/context_menu";
 @use "../src/shared/dialogs/dialog_shell/dialog_shell";
 @use "../src/shared/dialogs/confirmation_dialog/confirmation_dialog";
 @use "../src/shared/dialogs/prompt_dialog/prompt_dialog";
@@ -25,7 +26,7 @@
 @use "../src/database/browser/browser";
 @use "../src/database/components/schema_sidebar/schema_sidebar";
 @use "../src/database/components/data_grid/data_grid";
-@use "../src/database/components/result_grid/result_grid";
+@use "../src/database/components/grid/grid";
 @use "../src/database/components/structure_view/structure_view";
 @use "../src/database/components/sql_editor/sql_editor";
 @use "../src/database/components/sql_code/sql_code";
