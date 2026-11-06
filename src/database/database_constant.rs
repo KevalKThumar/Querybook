@@ -63,6 +63,13 @@ pub const OVERSCAN_ROWS: usize = 10;
 pub const GRID_LINE_HEIGHT: f64 = 17.0;
 pub const GRID_CHAR_WIDTH: f64 = 7.0;
 pub const GRID_MAX_FIT_LINES: usize = 12;
+/// Column resize: narrowest drag, widest double-click fit, and the room a fit
+/// leaves for padding plus the sort / link icons.
+pub const MIN_COLUMN_WIDTH: f64 = 48.0;
+pub const MAX_FIT_COLUMN_WIDTH: f64 = 640.0;
+pub const COLUMN_FIT_PADDING: f64 = 34.0;
+/// Cell inspector: bytes of a blob fetched for the hex view.
+pub const INSPECT_MAX_BYTES: usize = 65_536;
 
 // SQL editor
 /// Autocomplete list length.

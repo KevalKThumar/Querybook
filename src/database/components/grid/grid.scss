@@ -26,14 +26,32 @@
   cursor: pointer;
 }
 
+// Widths come inline from `--qw-<column>` (column resize), not the mixin's fixed basis.
+.qgrid-th, .qgrid-filter, .qgrid-cell { flex: none; }
+
 .qgrid-th {
   @include g.grid-cell;
+  position: relative;
   gap: $spacing-xs;
   font-weight: $font-weight-semibold;
   > .bi { color: $primary; }
+  > .qgrid-fk { color: $text-muted; }
   &.sortable { cursor: pointer; }
   &.sortable:hover { background: $bg-hover; }
 }
+
+// Grab strip on the header's right edge.
+.qgrid-resize {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  &:hover { background: $primary; opacity: 0.5; }
+}
+
+.qgrid.resizing, .qgrid.resizing * { cursor: col-resize !important; }
 
 .qgrid-filters .qgrid-rownum { background: $bg-raised; }
 
@@ -61,6 +79,7 @@
 
 .qgrid-cell {
   @include g.grid-cell;
+  position: relative;
   cursor: default;
 
   // Cell range: tint; the focused cell gets the outline.
@@ -92,3 +111,23 @@
   color: $text;
   font: inherit;
 }
+
+// Foreign-key link: shown on hover / when the cell is focused.
+.qgrid-follow {
+  position: absolute;
+  top: 4px;
+  right: 2px;
+  display: none;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: $radius-sm;
+  background: $bg-raised;
+  color: $primary;
+  line-height: 1;
+  cursor: pointer;
+  &:hover { background: $primary; color: #fff; }
+}
+
+.qgrid-cell:hover .qgrid-follow, .qgrid-cell.focus .qgrid-follow { display: block; }
