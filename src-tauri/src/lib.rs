@@ -5,7 +5,7 @@ mod db;
 mod io;
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use db::{Registry, Session, invalid, io_err};
@@ -20,6 +20,11 @@ static NEXT_WINDOW: AtomicUsize = AtomicUsize::new(1);
 /// Run blocking SQLite work off the async runtime threads.
 async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Res<T> + Send + 'static) -> Res<T> {
     tauri::async_runtime::spawn_blocking(f).await.map_err(|e| invalid(e.to_string()))?
+}
+
+/// Window title for a database file.
+fn title_for(path: &Path) -> String {
+    path.file_name().map_or("Querybook".into(), |n| n.to_string_lossy().into_owned())
 }
 
 fn picked_path(p: Option<FilePath>) -> Res<Option<PathBuf>> {
@@ -39,7 +44,7 @@ fn open_in(app: &AppHandle, caller: Option<&WebviewWindow>, path: PathBuf) -> Re
         let here = caller.is_some_and(|c| c.label() == label);
         return Ok(if here { OpenOutcome::ThisWindow } else { OpenOutcome::OtherWindow });
     }
-    let title = path.file_name().map_or("Querybook".into(), |n| n.to_string_lossy().into_owned());
+    let title = title_for(&path);
     if let Some(caller) = caller.filter(|c| reg.get(c.label()).is_none_or(|s| s.path.is_none())) {
         reg.insert(caller.label(), Session::new(Some(path)));
         let _ = caller.set_title(&title);
@@ -95,14 +100,19 @@ async fn open_path(app: AppHandle, window: WebviewWindow, path: String) -> Res<O
 }
 
 /// Files opened from Finder (double-click, Open With, drop on the Dock icon).
-/// macOS sends these as an Apple event, not argv, and on a cold launch it
-/// arrives after setup, once "main" exists.
+/// macOS sends these as an Apple event, not argv. On a cold launch it arrives
+/// before setup has created any window, so the first file is queued for "main".
 #[cfg(target_os = "macos")]
 fn open_from_finder(app: &AppHandle, urls: &[tauri::Url]) {
+    let reg = app.state::<Registry>();
     let main = app.get_webview_window("main");
     for path in urls.iter().filter_map(|u| u.to_file_path().ok()).filter(|p| p.is_file()) {
-        let canonical = fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
-        let already_open = app.state::<Registry>().find_path(&canonical).is_some();
+        let path = fs::canonicalize(&path).unwrap_or(path);
+        if main.is_none() && app.webview_windows().is_empty() && reg.get("main").is_none() {
+            reg.insert("main", Session::new(Some(path)));
+            continue;
+        }
+        let already_open = reg.find_path(&path).is_some();
         match open_in(app, main.as_ref(), path) {
             // Bound to the empty "main" window: reload it so it picks up the file,
             // whether it's showing the welcome screen or still loading.
@@ -231,10 +241,15 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(Registry::default())
         .setup(|app| {
+            let reg = app.state::<Registry>();
             // `querybook path/to.db` opens that file in the first window.
             if let Some(path) = std::env::args_os().nth(1).map(PathBuf::from).filter(|p| p.is_file()) {
                 let path = fs::canonicalize(&path).unwrap_or(path);
-                app.state::<Registry>().insert("main", Session::new(Some(path)));
+                reg.insert("main", Session::new(Some(path)));
+            }
+            // Name "main" after its file (from argv, or a Finder open queued before setup).
+            if let (Some(w), Some(path)) = (app.get_webview_window("main"), reg.get("main").and_then(|s| s.path.clone())) {
+                let _ = w.set_title(&title_for(&path));
             }
             Ok(())
         })

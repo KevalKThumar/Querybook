@@ -38,3 +38,8 @@ lto = true
 opt-level = 3
 panic = "abort"
 strip = true
+
+# Keep the wasm's `target_features` section: wasm-opt needs it to accept the
+# bulk-memory ops rustc emits (strip = true makes `trunk build --release` fail).
+[profile.release.package.querybook-ui]
+strip = false
