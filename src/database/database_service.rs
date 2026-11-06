@@ -16,11 +16,12 @@ use shared::{AppError, Cell, CsvPreview, ExecOutcome, KeyInput, OpenOutcome, Res
 use crate::database::database_constant::{
     CMD_CANCEL, CMD_CONNECT, CMD_CSV_PREVIEW, CMD_EXECUTE, CMD_EXEC_SCRIPT, CMD_EXPORT_CSV, CMD_EXPORT_SQL_DUMP,
     CMD_IMPORT_CSV, CMD_IMPORT_SQL, CMD_OPEN_DIALOG, CMD_OPEN_PATH, CMD_PICK_IMPORT_FILE, CMD_QUERY,
-    CMD_SESSION_INFO, CMD_SET_ENCRYPTION, HISTORY_SEPARATOR, MAX_HISTORY, MAX_RECENT_FILES, STORAGE_HISTORY_PREFIX, SQL_BEGIN_EDIT, SQL_LOAD_SCHEMA, SQL_REVERT_CHANGES,
-    SQL_TABLE_COLUMNS, SQL_WRITE_CHANGES, STORAGE_RECENT_FILES,
+    CMD_SESSION_INFO, CMD_SET_ENCRYPTION, HISTORY_SEPARATOR, MAX_HISTORY, MAX_RECENT_FILES, SNIPPET_NAME_SEPARATOR,
+    SQL_BEGIN_EDIT, SQL_FOREIGN_KEYS, SQL_LOAD_SCHEMA, SQL_REVERT_CHANGES, SQL_TABLE_COLUMNS, SQL_WRITE_CHANGES,
+    STORAGE_HISTORY_PREFIX, STORAGE_RECENT_FILES, STORAGE_SNIPPETS,
 };
 use crate::database::database_structure::{
-    ColumnInfo, CsvPreviewRequest, DatabaseService, ExportCsvRequest, ImportCsvRequest, KeyRequest,
+    ColumnInfo, CsvPreviewRequest, DatabaseService, ExportCsvRequest, ForeignKey, ImportCsvRequest, KeyRequest,
     OpenDialogRequest, PathRequest, PickFileRequest, SchemaObject, ScriptRequest, SqlRequest,
 };
 use crate::shared::services::local_storage_service::LocalStorageService;
@@ -138,6 +139,17 @@ impl DatabaseService {
     }
 
     // Keval Thumar
+    // Single-column foreign keys of a table (empty for views).
+    pub async fn load_foreign_keys(table: &str, toast: ToastService) -> Vec<ForeignKey> {
+        let params = [Cell::Text(table.to_string())];
+        let Some(rs) = Self::query(SQL_FOREIGN_KEYS, &params, toast).await else { return vec![] };
+        rs.rows
+            .iter()
+            .map(|r| ForeignKey { column: text(&r[0]), table: text(&r[1]), target: text(&r[2]) })
+            .collect()
+    }
+
+    // Keval Thumar
     // Open the pending-changes savepoint before a grid/schema edit (no-op if a
     // transaction is already open). Returns false if it couldn't be started.
     pub async fn begin_edit(in_txn: RwSignal<bool>, toast: ToastService) -> bool {
@@ -224,6 +236,25 @@ impl DatabaseService {
         list.insert(0, sql.to_string());
         list.truncate(MAX_HISTORY);
         LocalStorageService::set(&format!("{STORAGE_HISTORY_PREFIX}{db_path}"), &list.join(&HISTORY_SEPARATOR.to_string()));
+    }
+
+    /// Saved snippets as (name, SQL), in the order they were saved.
+    pub fn snippets() -> Vec<(String, String)> {
+        LocalStorageService::get(STORAGE_SNIPPETS)
+            .map(|s| {
+                s.split(HISTORY_SEPARATOR)
+                    .filter_map(|e| e.split_once(SNIPPET_NAME_SEPARATOR))
+                    .map(|(name, sql)| (name.to_string(), sql.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn set_snippets(list: &[(String, String)]) {
+        let clean = |s: &str| s.replace([HISTORY_SEPARATOR, SNIPPET_NAME_SEPARATOR], "");
+        let entries: Vec<String> =
+            list.iter().map(|(name, sql)| format!("{}{SNIPPET_NAME_SEPARATOR}{}", clean(name), clean(sql))).collect();
+        LocalStorageService::set(STORAGE_SNIPPETS, &entries.join(&HISTORY_SEPARATOR.to_string()));
     }
 
     pub fn remove_recent(path: &str) {

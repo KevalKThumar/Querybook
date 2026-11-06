@@ -9,7 +9,7 @@ use crate::database::components::data_grid::data_grid_component::DataGrid;
 use crate::database::components::schema_sidebar::schema_sidebar_component::SchemaSidebar;
 use crate::database::components::sql_editor::sql_editor_component::SqlEditor;
 use crate::database::components::structure_view::structure_view_component::StructureView;
-use crate::database::database_structure::{CipherMode, SchemaObject, Tab, TabKind};
+use crate::database::database_structure::{CipherMode, FkJump, SchemaObject, Tab, TabKind};
 use crate::database::dialogs::cipher_dialog::cipher_dialog_component::CipherDialog;
 use crate::database::dialogs::create_table_dialog::create_table_dialog_component::CreateTableDialog;
 use crate::database::dialogs::import_csv_dialog::import_csv_dialog_component::ImportCsvDialog;
@@ -27,6 +27,7 @@ pub fn browser_view(
     active_tab: Signal<Option<u32>>,
     in_txn: RwSignal<bool>,
     data_version: Signal<u32>,
+    jump: RwSignal<Option<FkJump>>,
     saving: Signal<bool>,
     theme_mode: Signal<ThemeMode>,
     cipher_open: RwSignal<bool>,
@@ -181,7 +182,7 @@ pub fn browser_view(
                                     let id = tab.id;
                                     let content = match tab.kind {
                                         TabKind::Browse(name) => view! {
-                                            <DataGrid name=name schema=schema in_txn=in_txn data_version=data_version on_changed=on_changed />
+                                            <DataGrid name=name schema=schema in_txn=in_txn data_version=data_version on_changed=on_changed on_open=open_tab jump=jump />
                                         }.into_any(),
                                         TabKind::Structure(name) => view! {
                                             <StructureView name=name schema=schema in_txn=in_txn data_version=data_version on_changed=on_changed on_open=open_tab />

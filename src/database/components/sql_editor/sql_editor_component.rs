@@ -1,6 +1,6 @@
 //! SqlEditor — a SQL tab: highlighted editor with autocomplete, run all /
-//! run current statement / EXPLAIN, query history, and results in the shared
-//! `<Grid/>`.
+//! run current statement / EXPLAIN, Format (⇧⌥F), snippets, query history,
+//! and results in the shared `<Grid/>` with a read-only cell inspector.
 //!
 //! The editor is a transparent `<textarea>` over a highlighted `<pre>` (same
 //! font metrics, scroll kept in sync), so typing stays native.
@@ -13,6 +13,7 @@ use leptos::html::{Pre, Textarea};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use shared::complete::{self, CompletionContext, Suggestion};
+use shared::format;
 use shared::lexer::{has_keyword, statement_at};
 use shared::{Cell, ScriptOutcome};
 
@@ -73,6 +74,9 @@ pub fn SqlEditor(
     let textarea = NodeRef::<Textarea>::new();
     let overlay = NodeRef::<Pre>::new();
     let measure = NodeRef::<Pre>::new();
+    let inspector_open = RwSignal::new(false);
+    let snippets_open = RwSignal::new(false);
+    let snippet_sql = RwSignal::new(String::new());
 
     // ── Autocomplete ──
     let suggest_open = RwSignal::new(false);
@@ -226,6 +230,39 @@ pub fn SqlEditor(
         }
     });
     let on_stop = Callback::new(move |_: ()| spawn_local(DatabaseService::cancel()));
+    // Format the selection, else everything.
+    // ponytail: replacing the textarea's text resets its undo stack.
+    let on_format = Callback::new(move |_: ()| {
+        let Some(ta) = textarea.get_untracked() else { return };
+        match selected_sql(textarea) {
+            Some(part) => {
+                let start = ta.selection_start().ok().flatten().unwrap_or(0);
+                let end = ta.selection_end().ok().flatten().unwrap_or(start);
+                let pretty = format::sql(&part);
+                let _ = ta.set_range_text_with_start_and_end(&pretty, start, end);
+                let _ = ta.set_selection_range(start, start + pretty.encode_utf16().count() as u32);
+            }
+            None => ta.set_value(&format::sql(&ta.value())),
+        }
+        text.set(ta.value());
+        suggest_open.set(false);
+        let _ = ta.focus();
+    });
+    let on_open_snippets = Callback::new(move |_: ()| {
+        snippet_sql.set(selected_sql(textarea).unwrap_or_else(|| text.get_untracked()));
+        snippets_open.set(true);
+    });
+    // A snippet replaces the selection / goes in at the caret.
+    let on_insert_snippet = Callback::new(move |snippet: String| {
+        let Some(ta) = textarea.get_untracked() else { return };
+        let start = ta.selection_start().ok().flatten().unwrap_or(0);
+        let end = ta.selection_end().ok().flatten().unwrap_or(start);
+        let _ = ta.set_range_text_with_start_and_end(&snippet, start, end);
+        let at = start + snippet.encode_utf16().count() as u32;
+        let _ = ta.set_selection_range(at, at);
+        text.set(ta.value());
+        let _ = ta.focus();
+    });
     let on_history = Callback::new(move |index: usize| {
         let (Some(sql), Some(ta)) = (history.with_untracked(|h| h.get(index).cloned()), textarea.get_untracked()) else { return };
         ta.set_value(&sql);
@@ -244,6 +281,12 @@ pub fn SqlEditor(
     let on_keydown = Callback::new(move |ev: web_sys::KeyboardEvent| {
         // Enter that confirms an IME composition is not ours.
         if ev.is_composing() || ev.key_code() == 229 {
+            return;
+        }
+        // ⇧⌥F (the key itself reads "Ï" with ⌥ on a Mac, so match the physical key).
+        if ev.code() == "KeyF" && ev.shift_key() && ev.alt_key() {
+            ev.prevent_default();
+            on_format.run(());
             return;
         }
         let key = ev.key();
@@ -358,6 +401,13 @@ pub fn SqlEditor(
         })
     });
 
+    // Read-only inspector for the focused result cell.
+    let focus = Memo::new(move |_| selection.with(|s| s.focus()));
+    let inspected = Memo::new(move |_| focus.get().and_then(|at| cell_at.run(at)));
+    let inspected_column =
+        Signal::derive(move || focus.get().and_then(|(_, c)| result_columns.with(|cols| cols.get(c).cloned())).unwrap_or_default());
+    let on_toggle_inspector = Callback::new(move |_: ()| inspector_open.update(|o| *o = !*o));
+
     sql_editor_view(
         highlighted,
         running.into(),
@@ -385,5 +435,14 @@ pub fn SqlEditor(
         on_caret_moved,
         on_scroll,
         on_pick,
+        on_format,
+        on_open_snippets,
+        snippets_open,
+        snippet_sql.into(),
+        on_insert_snippet,
+        inspector_open.into(),
+        inspected_column,
+        Signal::derive(move || inspected.get()),
+        on_toggle_inspector,
     )
 }

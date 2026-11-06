@@ -41,6 +41,14 @@ pub const SQL_LOAD_SCHEMA: &str = "SELECT type, name, tbl_name, COALESCE(sql, ''
 pub const SQL_TABLE_COLUMNS: &str =
     "SELECT name, type, \"notnull\", dflt_value, pk, hidden FROM pragma_table_xinfo(?1) ORDER BY cid";
 
+/// Single-column foreign keys of ?1 as (column, parent table, parent column).
+/// A REFERENCES without a column list points at the parent's primary key.
+// ponytail: composite foreign keys are skipped; jumping needs every key value.
+pub const SQL_FOREIGN_KEYS: &str = "SELECT f.\"from\", f.\"table\", \
+     COALESCE(f.\"to\", (SELECT p.name FROM pragma_table_info(f.\"table\") p WHERE p.pk = 1)) \
+     FROM pragma_foreign_key_list(?1) f \
+     WHERE (SELECT count(*) FROM pragma_foreign_key_list(?1) g WHERE g.id = f.id) = 1";
+
 /// Sidebar groups: (sqlite_schema type, label).
 pub const SCHEMA_GROUPS: [(&str, &str); 4] = [("table", "Tables"), ("view", "Views"), ("index", "Indexes"), ("trigger", "Triggers")];
 
@@ -79,8 +87,11 @@ pub const EDITOR_PADDING: f64 = 12.0;
 /// Query history per database (localStorage key = prefix + db path).
 pub const STORAGE_HISTORY_PREFIX: &str = "querybook.history:";
 pub const MAX_HISTORY: usize = 50;
-/// Separates history entries in storage (queries may contain newlines).
+/// Separates history entries / snippets in storage (queries may contain newlines).
 pub const HISTORY_SEPARATOR: char = '\u{1e}';
+/// Saved SQL snippets, shared by every database: name + SNIPPET_NAME_SEPARATOR + SQL.
+pub const STORAGE_SNIPPETS: &str = "querybook.snippets";
+pub const SNIPPET_NAME_SEPARATOR: char = '\u{1f}';
 
 // SQLCipher 4 defaults — the only settings Querybook uses (shown read-only).
 pub const CIPHER_DEFAULTS: [(&str, &str); 5] = [

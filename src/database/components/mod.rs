@@ -1,3 +1,4 @@
+pub mod cell_inspector;
 pub mod data_grid;
 pub mod grid;
 pub mod schema_sidebar;

@@ -7,9 +7,11 @@ use leptos::prelude::*;
 use shared::complete::{SuggestKind, Suggestion};
 use shared::Cell;
 
+use crate::database::components::cell_inspector::cell_inspector_component::CellInspector;
 use crate::database::components::grid::grid_component::Grid;
 use crate::database::components::sql_code::sql_code_component::SqlCode;
 use crate::database::database_structure::GridSelection;
+use crate::database::dialogs::snippets_dialog::snippets_dialog_component::SnippetsDialog;
 
 fn kind_icon(kind: SuggestKind) -> &'static str {
     match kind {
@@ -48,6 +50,15 @@ pub fn sql_editor_view(
     on_caret_moved: Callback<()>,
     on_scroll: Callback<()>,
     on_pick: Callback<usize>,
+    on_format: Callback<()>,
+    on_open_snippets: Callback<()>,
+    snippets_open: RwSignal<bool>,
+    snippet_sql: Signal<String>,
+    on_insert_snippet: Callback<String>,
+    inspector_open: Signal<bool>,
+    inspected_column: Signal<String>,
+    inspected: Signal<Option<Cell>>,
+    on_toggle_inspector: Callback<()>,
 ) -> impl IntoView {
     view! {
         <div class="sqled d-flex flex-column h-100">
@@ -60,6 +71,13 @@ pub fn sql_editor_view(
                 </button>
                 <button class="btn btn-sm btn-outline-secondary" title="EXPLAIN QUERY PLAN for the current statement" disabled=move || running.get() on:click=move |_| on_explain.run(())>
                     <i class="bi bi-diagram-2"></i>" Explain"
+                </button>
+                <div class="vr mx-1"></div>
+                <button class="btn btn-sm btn-outline-secondary" title="Format the SQL, or the selection (⇧⌥F)" on:click=move |_| on_format.run(())>
+                    <i class="bi bi-text-indent-left"></i>" Format"
+                </button>
+                <button class="btn btn-sm btn-outline-secondary" title="Saved snippets" on:click=move |_| on_open_snippets.run(())>
+                    <i class="bi bi-bookmark"></i>" Snippets"
                 </button>
                 <Show when=move || running.get() fallback=|| ()>
                     <button class="btn btn-sm btn-outline-danger" title="Cancel the running query" on:click=move |_| on_stop.run(())>
@@ -88,6 +106,14 @@ pub fn sql_editor_view(
                     }}
                 </select>
                 <span class="sqled-hint ms-auto">"⇧↵ run current · ⌃Space suggest"</span>
+                <button
+                    class="btn btn-sm btn-outline-secondary"
+                    class:active=move || inspector_open.get()
+                    title="Cell inspector for the results"
+                    on:click=move |_| on_toggle_inspector.run(())
+                >
+                    <i class="bi bi-layout-sidebar-reverse"></i>
+                </button>
             </div>
 
             <div class="sqled-input">
@@ -141,15 +167,26 @@ pub fn sql_editor_view(
                 {move || status.get().map(|(_, msg)| msg).unwrap_or_else(|| "Ready".to_string())}
             </div>
 
-            <div class="sqled-results flex-grow-1">
-                <Grid
-                    columns=result_columns
-                    total=result_total
-                    cell_at=cell_at
-                    selection=selection
-                    table_name=result_table
-                />
+            <div class="sqled-results d-flex flex-grow-1">
+                <div class="flex-grow-1 overflow-hidden">
+                    <Grid
+                        columns=result_columns
+                        total=result_total
+                        cell_at=cell_at
+                        selection=selection
+                        table_name=result_table
+                    />
+                </div>
+                <Show when=move || inspector_open.get() fallback=|| ()>
+                    <CellInspector
+                        column=inspected_column
+                        cell=inspected
+                        editable=false
+                        on_close=on_toggle_inspector
+                    />
+                </Show>
             </div>
+            <SnippetsDialog open=snippets_open current_sql=snippet_sql on_insert=on_insert_snippet />
         </div>
     }
 }

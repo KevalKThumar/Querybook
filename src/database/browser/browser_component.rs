@@ -13,7 +13,7 @@ use shared::{ErrorKind, FileKind, KeyInput, SessionInfo};
 
 use super::browser_view::browser_view;
 use crate::database::database_constant::ROUTE_WELCOME;
-use crate::database::database_structure::{CipherMode, DatabaseService, SchemaObject, Tab, TabKind};
+use crate::database::database_structure::{CipherMode, DatabaseService, FkJump, SchemaObject, Tab, TabKind};
 use crate::shared::common_structure::ThemeService;
 use crate::shared::services::toast_service::ToastService;
 
@@ -36,6 +36,8 @@ pub fn Browser() -> impl IntoView {
     // Bumped after anything that may change data or schema; grids reload on it.
     let data_version = RwSignal::new(0u32);
     let saving = RwSignal::new(false);
+    // "Go to referenced row" waiting for its browse tab to apply it.
+    let jump = RwSignal::new(None::<FkJump>);
 
     let cipher_open = RwSignal::new(false);
     let cipher_mode = RwSignal::new(CipherMode::Unlock);
@@ -296,6 +298,7 @@ pub fn Browser() -> impl IntoView {
         active_tab.into(),
         in_txn,
         data_version.into(),
+        jump,
         saving.into(),
         theme.mode.into(),
         cipher_open,

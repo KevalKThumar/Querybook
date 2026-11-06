@@ -4,6 +4,8 @@
 //! with LIMIT/OFFSET (ordered by the sort column then the row key, so pages are
 //! stable) as they scroll into view, plus sort/filters and the SQL behind each
 //! edit / duplicate / delete. Every write runs inside the pending savepoint.
+//! It also follows foreign keys (opening the parent table filtered to the
+//! referenced row) and feeds the cell inspector, fetching blob bytes by key.
 //!
 //! Author: Keval Thumar
 
@@ -11,12 +13,15 @@ use std::collections::{HashMap, HashSet};
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+use shared::format::from_hex;
 use shared::sql::{self, quote_ident, RowKey};
 use shared::Cell;
 
 use super::data_grid_view::data_grid_view;
-use crate::database::database_constant::CHUNK_ROWS;
-use crate::database::database_structure::{ColumnInfo, DatabaseService, GridSelection, SchemaObject};
+use crate::database::database_constant::{CHUNK_ROWS, INSPECT_MAX_BYTES};
+use crate::database::database_structure::{
+    ColumnInfo, DatabaseService, FkJump, ForeignKey, GridSelection, SchemaObject, TabKind,
+};
 use crate::shared::services::toast_service::ToastService;
 
 // Keval Thumar
@@ -28,12 +33,18 @@ pub fn DataGrid(
     in_txn: RwSignal<bool>,
     #[prop(into)] data_version: Signal<u32>,
     on_changed: Callback<bool>,
+    /// Opens (or focuses) a tab — used to follow foreign keys.
+    on_open: Callback<TabKind>,
+    /// Pending "go to referenced row", shared by every browse tab; the tab
+    /// showing `jump.table` applies it and clears it.
+    jump: RwSignal<Option<FkJump>>,
 ) -> impl IntoView {
     let toast = expect_context::<ToastService>();
     let name = StoredValue::new(name);
 
     let key = RwSignal::new(RowKey::ReadOnly);
     let column_info = StoredValue::new(Vec::<ColumnInfo>::new());
+    let foreign_keys = RwSignal::new(Vec::<ForeignKey>::new());
     let columns = RwSignal::new(Vec::<String>::new());
     let filters = RwSignal::new(Vec::<String>::new());
     let sort = RwSignal::new(None::<(String, bool)>);
@@ -47,6 +58,7 @@ pub fn DataGrid(
     let selection = RwSignal::new(GridSelection::None);
     let delete_open = RwSignal::new(false);
     let pending_delete = RwSignal::new(Vec::<usize>::new());
+    let inspector_open = RwSignal::new(false);
 
     let editable = Signal::derive(move || key.with(|k| *k != RowKey::ReadOnly));
     let key_width = move || key.with_untracked(RowKey::width);
@@ -126,6 +138,7 @@ pub fn DataGrid(
         spawn_local(async move {
             let table = name.get_value();
             let cols = DatabaseService::load_columns(&table, toast).await;
+            foreign_keys.set(DatabaseService::load_foreign_keys(&table, toast).await);
             let object = schema.with_untracked(|s| s.iter().find(|o| o.name == table).cloned());
             key.set(object.map_or(RowKey::ReadOnly, |o| o.row_key(&cols)));
             column_info.set_value(cols);
@@ -207,6 +220,50 @@ pub fn DataGrid(
         Cell::Null | Cell::Blob(_) => toast.error("Use a SQL tab to filter on NULL or binary values."),
         value => on_filter.run((c, format!("={}", value.display()))),
     });
+    // ── Foreign keys ──
+    let fk_of = move |column: &str| {
+        foreign_keys.with_untracked(|fks| fks.iter().find(|fk| fk.column.eq_ignore_ascii_case(column)).cloned())
+    };
+    let fk_targets = Signal::derive(move || {
+        columns.with(|cols| {
+            foreign_keys.with(|fks| {
+                cols.iter()
+                    .map(|c| fks.iter().find(|fk| fk.column.eq_ignore_ascii_case(c)).map(|fk| format!("{}.{}", fk.table, fk.target)))
+                    .collect::<Vec<_>>()
+            })
+        })
+    });
+    let on_follow_fk = Callback::new(move |(r, c): (usize, usize)| {
+        let Some(fk) = columns.with_untracked(|cols| cols.get(c).and_then(|col| fk_of(col))) else { return };
+        let value = match cell_at.run((r, c)) {
+            Some(Cell::Null) => return toast.error("NULL doesn't reference a row."),
+            Some(Cell::Blob(_)) | None => return toast.error("Can't follow a binary value."),
+            Some(value) => value.display(),
+        };
+        // REFERENCES may spell the table differently: use the schema's name so the tab is reused.
+        let table = schema.with_untracked(|s| {
+            s.iter().find(|o| o.kind == "table" && o.name.eq_ignore_ascii_case(&fk.table)).map(|o| o.name.clone())
+        });
+        let Some(table) = table else { return toast.error(&format!("Table “{}” doesn't exist.", fk.table)) };
+        jump.set(Some(FkJump { table: table.clone(), column: fk.target, value }));
+        on_open.run(TabKind::Browse(table));
+    });
+    // Apply a jump aimed at this table once its columns are known (a new tab
+    // loads them first, and loading resets the filters).
+    Effect::new(move |_| {
+        let Some(target) = jump.get().filter(|j| name.with_value(|n| *n == j.table)) else { return };
+        let Some(c) = columns.with(|cols| cols.iter().position(|n| n.eq_ignore_ascii_case(&target.column))) else { return };
+        jump.set(None);
+        filters.update(|f| {
+            f.iter_mut().for_each(String::clear);
+            if let Some(slot) = f.get_mut(c) {
+                *slot = format!("={}", target.value);
+            }
+        });
+        selection.set(GridSelection::cell((0, c)));
+        reset();
+    });
+
     let on_edit = Callback::new(move |(i, c, value): (usize, usize, Cell)| {
         let (Some(keys), Some(column)) = (key_cells(i), columns.with_untracked(|cols| cols.get(c).cloned())) else {
             return missing_rows();
@@ -279,6 +336,38 @@ pub fn DataGrid(
             }
         })
     });
+    // ── Cell inspector ──
+    let focus = Memo::new(move |_| selection.with(|s| s.focus()));
+    let inspected = Memo::new(move |_| focus.get().and_then(|at| cell_at.run(at)));
+    let inspected_column =
+        Signal::derive(move || focus.get().and_then(|(_, c)| columns.with(|cols| cols.get(c).cloned())).unwrap_or_default());
+    let blob = RwSignal::new(None::<Result<(Vec<u8>, usize), String>>);
+    Effect::new(move |_| {
+        blob.set(None);
+        let (true, Some(Cell::Blob(_)), Some((r, c))) = (inspector_open.get(), inspected.get(), focus.get()) else { return };
+        if key.with_untracked(|k| *k == RowKey::ReadOnly) {
+            return blob.set(Some(Err("Views have no row key, so their bytes can't be fetched.".into())));
+        }
+        let (Some(keys), Some(column)) = (key_cells(r), columns.with_untracked(|cols| cols.get(c).cloned())) else { return };
+        let query = sql::blob_hex(&name.get_value(), &key.get_untracked(), &column, INSPECT_MAX_BYTES);
+        spawn_local(async move {
+            let Some(rs) = DatabaseService::query(&query, &keys, toast).await else { return };
+            if focus.get_untracked() != Some((r, c)) {
+                return;
+            }
+            let row = rs.rows.into_iter().next().unwrap_or_default();
+            let bytes = row.first().and_then(|h| from_hex(&h.display()));
+            let len = row.get(1).and_then(|n| n.display().parse().ok()).unwrap_or(0);
+            blob.set(Some(bytes.map(|b| (b, len)).ok_or_else(|| "The row is gone.".to_string())));
+        });
+    });
+    let on_inspect_apply = Callback::new(move |value: Cell| {
+        if let Some((r, c)) = focus.get_untracked() {
+            on_edit.run((r, c, value));
+        }
+    });
+    let on_toggle_inspector = Callback::new(move |_: ()| inspector_open.update(|o| *o = !*o));
+
     let delete_message = Signal::derive(move || format!("Delete {} rows? You can still revert until you write changes.", pending_delete.with(|p| p.len())));
     let table_name = Signal::derive(move || name.get_value());
 
@@ -308,5 +397,13 @@ pub fn DataGrid(
         on_null_selected,
         on_refresh,
         on_export,
+        fk_targets,
+        on_follow_fk,
+        inspector_open.into(),
+        inspected_column,
+        Signal::derive(move || inspected.get()),
+        blob.into(),
+        on_inspect_apply,
+        on_toggle_inspector,
     )
 }

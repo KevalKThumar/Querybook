@@ -1,0 +1,49 @@
+@use "../../../../styles/variables" as *;
+
+.snippets-body { min-height: 220px; }
+
+.snippets-empty {
+  padding: $spacing-xl 0;
+  text-align: center;
+  font-size: $font-size-sm;
+  color: $text-muted;
+}
+
+.snippets-list {
+  border: 1px solid $border;
+  border-radius: $radius;
+  overflow: hidden;
+}
+
+.snippets-item {
+  height: 34px;
+  padding: 0 $spacing-sm;
+  border-bottom: 1px solid $border;
+  cursor: pointer;
+  font-size: $font-size-sm;
+
+  &:last-child { border-bottom: none; }
+  &:hover { background: $bg-hover; }
+  > .bi { color: $primary; }
+}
+
+.snippets-name {
+  flex: 0 0 auto;
+  max-width: 200px;
+  font-weight: $font-weight-semibold;
+}
+
+.snippets-preview {
+  min-width: 0;
+  font-family: $font-mono;
+  font-size: $font-size-xs;
+  color: $text-muted;
+}
+
+.snippets-delete {
+  color: $text-muted;
+  visibility: hidden;
+  &:hover { color: $danger; }
+}
+
+.snippets-item:hover .snippets-delete { visibility: visible; }

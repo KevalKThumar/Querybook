@@ -5,6 +5,7 @@
 use leptos::prelude::*;
 use shared::Cell;
 
+use crate::database::components::cell_inspector::cell_inspector_component::CellInspector;
 use crate::database::components::grid::grid_component::Grid;
 use crate::database::database_structure::GridSelection;
 use crate::shared::dialogs::confirmation_dialog::confirmation_dialog_component::ConfirmationDialog;
@@ -36,6 +37,14 @@ pub fn data_grid_view(
     on_null_selected: Callback<()>,
     on_refresh: Callback<()>,
     on_export: Callback<()>,
+    fk_targets: Signal<Vec<Option<String>>>,
+    on_follow_fk: Callback<(usize, usize)>,
+    inspector_open: Signal<bool>,
+    inspected_column: Signal<String>,
+    inspected: Signal<Option<Cell>>,
+    blob: Signal<Option<Result<(Vec<u8>, usize), String>>>,
+    on_inspect_apply: Callback<Cell>,
+    on_toggle_inspector: Callback<()>,
 ) -> impl IntoView {
     let nothing_selected = move || selection.with(|s| *s == GridSelection::None);
     view! {
@@ -63,25 +72,47 @@ pub fn data_grid_view(
                 </button>
                 <span class="ms-auto grid-count">{move || selection_info.get()}</span>
                 <span class="grid-count">{move || format!("{} rows", total.get())}</span>
+                <button
+                    class="btn btn-sm grid-tool ms-2"
+                    class:active=move || inspector_open.get()
+                    title="Cell inspector: full text, JSON, hex"
+                    on:click=move |_| on_toggle_inspector.run(())
+                >
+                    <i class="bi bi-layout-sidebar-reverse"></i>" Inspector"
+                </button>
             </div>
-            <div class="flex-grow-1 overflow-hidden">
-                <Grid
-                    columns=columns
-                    total=total
-                    cell_at=cell_at
-                    selection=selection
-                    table_name=table_name
-                    editable=editable
-                    on_range=on_range
-                    sort=sort
-                    on_sort=on_sort
-                    filters=filters
-                    on_filter=on_filter
-                    on_edit=on_edit
-                    on_delete_rows=on_delete_rows
-                    on_duplicate_rows=on_duplicate_rows
-                    on_filter_value=on_filter_value
-                />
+            <div class="d-flex flex-grow-1 overflow-hidden">
+                <div class="flex-grow-1 overflow-hidden">
+                    <Grid
+                        columns=columns
+                        total=total
+                        cell_at=cell_at
+                        selection=selection
+                        table_name=table_name
+                        editable=editable
+                        on_range=on_range
+                        sort=sort
+                        on_sort=on_sort
+                        filters=filters
+                        on_filter=on_filter
+                        on_edit=on_edit
+                        on_delete_rows=on_delete_rows
+                        on_duplicate_rows=on_duplicate_rows
+                        on_filter_value=on_filter_value
+                        fk_targets=fk_targets
+                        on_follow_fk=on_follow_fk
+                    />
+                </div>
+                <Show when=move || inspector_open.get() fallback=|| ()>
+                    <CellInspector
+                        column=inspected_column
+                        cell=inspected
+                        blob=blob
+                        editable=editable
+                        on_apply=on_inspect_apply
+                        on_close=on_toggle_inspector
+                    />
+                </Show>
             </div>
             <ConfirmationDialog
                 open=delete_open

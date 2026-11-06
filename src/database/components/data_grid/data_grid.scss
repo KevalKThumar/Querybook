@@ -9,6 +9,7 @@
   border: none;
   color: $text;
   &:hover:not(:disabled) { background: $bg-hover; }
+  &.active { background: $bg-selected; color: $primary; }
   &:disabled { border: none; }
 }
 

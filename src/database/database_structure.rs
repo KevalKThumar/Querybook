@@ -209,6 +209,30 @@ pub enum GridMenu {
     Cells,
 }
 
+/// "Go to referenced row": open `table` filtered to `column = value`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FkJump {
+    pub table: String,
+    pub column: String,
+    pub value: String,
+}
+
+/// One single-column foreign key of a table: `column` → `table`.`target`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ForeignKey {
+    pub column: String,
+    pub table: String,
+    pub target: String,
+}
+
+/// How the cell inspector shows a value.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum InspectMode {
+    Text,
+    Json,
+    Hex,
+}
+
 /// Clipboard formats offered by the grid.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum CopyKind {
