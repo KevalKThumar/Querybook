@@ -72,6 +72,8 @@ pub enum TabKind {
     Browse(String),
     Structure(String),
     Sql(u32),
+    /// Database info + maintenance (integrity check, VACUUM, …).
+    Info,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -85,6 +87,7 @@ impl Tab {
         match &self.kind {
             TabKind::Browse(name) | TabKind::Structure(name) => name.clone(),
             TabKind::Sql(n) => format!("SQL {n}"),
+            TabKind::Info => "Database".to_string(),
         }
     }
 
@@ -93,6 +96,7 @@ impl Tab {
             TabKind::Browse(_) => "bi bi-table",
             TabKind::Structure(_) => "bi bi-diagram-3",
             TabKind::Sql(_) => "bi bi-terminal",
+            TabKind::Info => "bi bi-info-square",
         }
     }
 }

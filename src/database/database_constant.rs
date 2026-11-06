@@ -49,6 +49,26 @@ pub const SQL_FOREIGN_KEYS: &str = "SELECT f.\"from\", f.\"table\", \
      FROM pragma_foreign_key_list(?1) f \
      WHERE (SELECT count(*) FROM pragma_foreign_key_list(?1) g WHERE g.id = f.id) = 1";
 
+/// Database facts for the info tab, in one row.
+pub const SQL_DATABASE_INFO: &str = "SELECT (SELECT page_size FROM pragma_page_size), \
+     (SELECT page_count FROM pragma_page_count), (SELECT freelist_count FROM pragma_freelist_count), \
+     (SELECT encoding FROM pragma_encoding), (SELECT journal_mode FROM pragma_journal_mode), \
+     (SELECT auto_vacuum FROM pragma_auto_vacuum), (SELECT user_version FROM pragma_user_version), \
+     (SELECT application_id FROM pragma_application_id), (SELECT foreign_keys FROM pragma_foreign_keys), \
+     sqlite_version()";
+pub const SQL_CIPHER_VERSION: &str = "PRAGMA cipher_version";
+
+/// Maintenance actions on the info tab: (label, icon, SQL, needs no pending changes, what it does).
+/// VACUUM fails inside a transaction, optimize would write its statistics into
+/// the pending changes, and foreign_keys is silently ignored inside one.
+pub const MAINTENANCE_ACTIONS: [(&str, &str, &str, bool, &str); 5] = [
+    ("Integrity check", "bi bi-shield-check", "PRAGMA integrity_check", false, "Full check of every page, index and constraint."),
+    ("Quick check", "bi bi-lightning", "PRAGMA quick_check", false, "Like the integrity check, minus index contents. Faster."),
+    ("Foreign key check", "bi bi-link-45deg", "PRAGMA foreign_key_check", false, "Rows whose foreign key points at a missing parent."),
+    ("Optimize", "bi bi-speedometer2", "PRAGMA optimize", true, "Refresh the query planner's statistics where useful."),
+    ("Vacuum", "bi bi-arrows-collapse", "VACUUM", true, "Rebuild the file: reclaims free pages, defragments. Can renumber rowids."),
+];
+
 /// Sidebar groups: (sqlite_schema type, label).
 pub const SCHEMA_GROUPS: [(&str, &str); 4] = [("table", "Tables"), ("view", "Views"), ("index", "Indexes"), ("trigger", "Triggers")];
 

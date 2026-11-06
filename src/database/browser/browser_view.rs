@@ -6,6 +6,7 @@ use leptos::prelude::*;
 use shared::KeyInput;
 
 use crate::database::components::data_grid::data_grid_component::DataGrid;
+use crate::database::components::database_info::database_info_component::DatabaseInfo;
 use crate::database::components::schema_sidebar::schema_sidebar_component::SchemaSidebar;
 use crate::database::components::sql_editor::sql_editor_component::SqlEditor;
 use crate::database::components::structure_view::structure_view_component::StructureView;
@@ -82,6 +83,10 @@ pub fn browser_view(
                 </button>
                 <button class="btn btn-sm browser-tool" title="Export the whole database as SQL" disabled=disconnected on:click=move |_| on_export_sql.run(())>
                     <i class="bi bi-box-arrow-up"></i><span>"Export SQL"</span>
+                </button>
+                <div class="vr mx-1"></div>
+                <button class="btn btn-sm browser-tool" title="Database info and maintenance (integrity check, VACUUM…)" disabled=disconnected on:click=move |_| open_tab.run(TabKind::Info)>
+                    <i class="bi bi-info-square"></i><span>"Info"</span>
                 </button>
 
                 <div class="ms-auto"></div>
@@ -189,6 +194,9 @@ pub fn browser_view(
                                         }.into_any(),
                                         TabKind::Sql(_) => view! {
                                             <SqlEditor in_txn=in_txn on_changed=on_changed schema=schema data_version=data_version db_path=file_path />
+                                        }.into_any(),
+                                        TabKind::Info => view! {
+                                            <DatabaseInfo in_txn=in_txn data_version=data_version file_path=file_path encrypted=encrypted schema=schema on_changed=on_changed />
                                         }.into_any(),
                                     };
                                     view! {

@@ -94,7 +94,7 @@ pub fn Browser() -> impl IntoView {
             tabs.update(|t| {
                 t.retain(|tab| match &tab.kind {
                     TabKind::Browse(n) | TabKind::Structure(n) => objects.iter().any(|o| &o.name == n),
-                    TabKind::Sql(_) => true,
+                    TabKind::Sql(_) | TabKind::Info => true,
                 })
             });
             let active_gone = active_tab

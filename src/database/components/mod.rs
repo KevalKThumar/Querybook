@@ -1,5 +1,6 @@
 pub mod cell_inspector;
 pub mod data_grid;
+pub mod database_info;
 pub mod grid;
 pub mod schema_sidebar;
 pub mod sql_code;
