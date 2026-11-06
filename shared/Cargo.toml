@@ -1,6 +1,10 @@
 [package]
 name = "shared"
 version = "0.1.0"
+description = "Querybook wire types and SQL helpers shared by the UI and the Tauri backend"
+authors = ["Keval Thumar"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/KevalKThumar/Querybook"
 edition = "2024"
 
 # Wire types + pure SQL helpers used by both the Leptos UI (wasm) and the Tauri backend.

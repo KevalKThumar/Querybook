@@ -1,6 +1,10 @@
 [package]
 name = "querybook-ui"
 version = "0.1.0"
+description = "Querybook user interface (Leptos, compiled to WebAssembly)"
+authors = ["Keval Thumar"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/KevalKThumar/Querybook"
 edition = "2021"
 
 # Build as a library, not a binary (Trunk mounts it via the #[wasm_bindgen(start)] in lib.rs).

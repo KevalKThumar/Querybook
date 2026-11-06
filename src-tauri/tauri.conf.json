@@ -35,6 +35,14 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "category": "DeveloperTool",
+    "copyright": "Copyright © 2026 Keval Thumar. Licensed under MIT or Apache-2.0.",
+    "shortDescription": "SQLite and SQLCipher database browser",
+    "resources": {
+      "../LICENSE-MIT": "LICENSE-MIT",
+      "../LICENSE-APACHE": "LICENSE-APACHE",
+      "../THIRD_PARTY_NOTICES.md": "THIRD_PARTY_NOTICES.md"
+    },
     "macOS": {
       "signingIdentity": "-"
     },

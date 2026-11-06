@@ -3,6 +3,8 @@ name = "querybook"
 version = "0.1.0"
 description = "Querybook — SQLite / SQLCipher browser"
 authors = ["Keval Thumar"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/KevalKThumar/Querybook"
 edition = "2024"
 
 [lib]
