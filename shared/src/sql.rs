@@ -1,0 +1,290 @@
+//! SQL text builders. Identifiers are always quoted; values always go as `?` params.
+
+use crate::Cell;
+
+pub fn quote_ident(s: &str) -> String {
+    format!("\"{}\"", s.replace('"', "\"\""))
+}
+
+pub fn quote_str(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "''"))
+}
+
+pub fn blob_literal(bytes: &[u8]) -> String {
+    let mut s = String::with_capacity(bytes.len() * 2 + 3);
+    s.push_str("X'");
+    for b in bytes {
+        s.push_str(&format!("{b:02X}"));
+    }
+    s.push('\'');
+    s
+}
+
+/// How rows of a browsed object are identified for edits.
+#[derive(Clone, Debug, PartialEq)]
+pub enum RowKey {
+    Rowid,
+    /// WITHOUT ROWID table: its primary-key columns.
+    Pk(Vec<String>),
+    /// Views: no edits.
+    ReadOnly,
+}
+
+impl RowKey {
+    /// Number of leading key cells `select_page` puts in front of each row.
+    pub fn width(&self) -> usize {
+        match self {
+            RowKey::Rowid => 1,
+            RowKey::Pk(cols) => cols.len(),
+            RowKey::ReadOnly => 0,
+        }
+    }
+
+    fn exprs(&self) -> Vec<String> {
+        match self {
+            // ponytail: shadowed if a table has its own column named _rowid_; fall back to Pk then.
+            RowKey::Rowid => vec!["_rowid_".into()],
+            RowKey::Pk(cols) => cols.iter().map(|c| quote_ident(c)).collect(),
+            RowKey::ReadOnly => vec![],
+        }
+    }
+
+    fn condition(&self) -> String {
+        self.exprs().iter().map(|e| format!("{e} = ?")).collect::<Vec<_>>().join(" AND ")
+    }
+}
+
+/// Per-column filter text, DB Browser style: `=x`, `<>x`, `>x`, `<=x`… compare;
+/// anything else is a case-insensitive "contains".
+fn filter_sql(column: &str, text: &str, params: &mut Vec<Cell>) -> Option<String> {
+    let t = text.trim();
+    if t.is_empty() {
+        return None;
+    }
+    let col = quote_ident(column);
+    for op in ["<>", "!=", ">=", "<=", "=", ">", "<"] {
+        if let Some(rest) = t.strip_prefix(op) {
+            params.push(Cell::Text(rest.trim().into()));
+            return Some(format!("{col} {op} ?"));
+        }
+    }
+    let escaped = t.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
+    params.push(Cell::Text(format!("%{escaped}%")));
+    Some(format!("CAST({col} AS TEXT) LIKE ? ESCAPE '\\'"))
+}
+
+fn where_sql(filters: &[(String, String)], params: &mut Vec<Cell>) -> String {
+    let parts: Vec<String> = filters.iter().filter_map(|(c, t)| filter_sql(c, t, params)).collect();
+    if parts.is_empty() { String::new() } else { format!(" WHERE {}", parts.join(" AND ")) }
+}
+
+/// `SELECT <key cells>, * ...` page for the data grid. Rows are ordered by the sort
+/// column, then the key, so LIMIT/OFFSET pages are stable.
+pub fn select_page(
+    table: &str,
+    key: &RowKey,
+    sort: Option<&(String, bool)>,
+    filters: &[(String, String)],
+    limit: usize,
+    offset: usize,
+) -> (String, Vec<Cell>) {
+    let mut params = Vec::new();
+    let mut select: Vec<String> = key.exprs();
+    select.push("*".into());
+    let mut sql = format!("SELECT {} FROM {}", select.join(", "), quote_ident(table));
+    sql += &where_sql(filters, &mut params);
+    let mut order: Vec<String> = Vec::new();
+    if let Some((col, desc)) = sort {
+        order.push(format!("{} {}", quote_ident(col), if *desc { "DESC" } else { "ASC" }));
+    }
+    order.extend(key.exprs());
+    if !order.is_empty() {
+        sql += &format!(" ORDER BY {}", order.join(", "));
+    }
+    sql += " LIMIT ? OFFSET ?";
+    params.push(Cell::Int(limit.to_string()));
+    params.push(Cell::Int(offset.to_string()));
+    (sql, params)
+}
+
+pub fn count_rows(table: &str, filters: &[(String, String)]) -> (String, Vec<Cell>) {
+    let mut params = Vec::new();
+    let sql = format!("SELECT count(*) FROM {}{}", quote_ident(table), where_sql(filters, &mut params));
+    (sql, params)
+}
+
+/// Params: new value, then the row's key cells.
+pub fn update_cell(table: &str, key: &RowKey, column: &str) -> String {
+    format!("UPDATE {} SET {} = ? WHERE {}", quote_ident(table), quote_ident(column), key.condition())
+}
+
+/// Params: the row's key cells.
+pub fn delete_row(table: &str, key: &RowKey) -> String {
+    format!("DELETE FROM {} WHERE {}", quote_ident(table), key.condition())
+}
+
+pub fn insert_default(table: &str) -> String {
+    format!("INSERT INTO {} DEFAULT VALUES", quote_ident(table))
+}
+
+/// One column in the Create Table / Add Column forms.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ColumnDef {
+    pub name: String,
+    /// Raw type text (INTEGER, TEXT, VARCHAR(20)…); empty = no type.
+    pub ty: String,
+    pub pk: bool,
+    pub autoinc: bool,
+    pub not_null: bool,
+    pub unique: bool,
+    /// Raw default; plain words are quoted, numbers/quoted/`(expr)`/keywords kept as typed.
+    pub default: String,
+}
+
+fn default_expr(d: &str) -> String {
+    const KEEP: [&str; 6] = ["NULL", "TRUE", "FALSE", "CURRENT_TIME", "CURRENT_DATE", "CURRENT_TIMESTAMP"];
+    let keep = d.parse::<f64>().is_ok()
+        || d.starts_with('\'')
+        || d.starts_with('(')
+        || KEEP.iter().any(|k| k.eq_ignore_ascii_case(d));
+    if keep { d.to_string() } else { quote_str(d) }
+}
+
+fn column_sql(c: &ColumnDef, inline_pk: bool) -> String {
+    let mut s = quote_ident(c.name.trim());
+    if !c.ty.trim().is_empty() {
+        s += " ";
+        s += c.ty.trim();
+    }
+    if c.not_null {
+        s += " NOT NULL";
+    }
+    if inline_pk {
+        s += " PRIMARY KEY";
+        if c.autoinc {
+            s += " AUTOINCREMENT";
+        }
+    }
+    if c.unique {
+        s += " UNIQUE";
+    }
+    if !c.default.trim().is_empty() {
+        s += " DEFAULT ";
+        s += &default_expr(c.default.trim());
+    }
+    s
+}
+
+pub fn create_table(name: &str, cols: &[ColumnDef], without_rowid: bool) -> String {
+    let pks: Vec<&ColumnDef> = cols.iter().filter(|c| c.pk).collect();
+    let mut parts: Vec<String> = cols.iter().map(|c| column_sql(c, c.pk && pks.len() == 1)).collect();
+    if pks.len() > 1 {
+        let names: Vec<String> = pks.iter().map(|c| quote_ident(c.name.trim())).collect();
+        parts.push(format!("PRIMARY KEY ({})", names.join(", ")));
+    }
+    format!(
+        "CREATE TABLE {} (\n\t{}\n){}",
+        quote_ident(name.trim()),
+        parts.join(",\n\t"),
+        if without_rowid { " WITHOUT ROWID" } else { "" }
+    )
+}
+
+pub fn add_column(table: &str, col: &ColumnDef) -> String {
+    format!("ALTER TABLE {} ADD COLUMN {}", quote_ident(table), column_sql(col, false))
+}
+
+pub fn rename_table(old: &str, new: &str) -> String {
+    format!("ALTER TABLE {} RENAME TO {}", quote_ident(old), quote_ident(new.trim()))
+}
+
+pub fn rename_column(table: &str, old: &str, new: &str) -> String {
+    format!("ALTER TABLE {} RENAME COLUMN {} TO {}", quote_ident(table), quote_ident(old), quote_ident(new.trim()))
+}
+
+pub fn drop_column(table: &str, column: &str) -> String {
+    format!("ALTER TABLE {} DROP COLUMN {}", quote_ident(table), quote_ident(column))
+}
+
+/// `kind` is the sqlite_schema type: table, view, index or trigger.
+pub fn drop_object(kind: &str, name: &str) -> String {
+    format!("DROP {} {}", kind.to_uppercase(), quote_ident(name))
+}
+
+pub fn create_index(name: &str, table: &str, columns: &[String], unique: bool) -> String {
+    let cols: Vec<String> = columns.iter().map(|c| quote_ident(c)).collect();
+    format!(
+        "CREATE {}INDEX {} ON {} ({})",
+        if unique { "UNIQUE " } else { "" },
+        quote_ident(name.trim()),
+        quote_ident(table),
+        cols.join(", ")
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn quoting() {
+        assert_eq!(quote_ident(r#"a"b"#), r#""a""b""#);
+        assert_eq!(quote_str("it's"), "'it''s'");
+        assert_eq!(blob_literal(&[0x00, 0xAB, 0xff]), "X'00ABFF'");
+    }
+
+    #[test]
+    fn page_with_sort_and_filters() {
+        let filters = vec![("name".into(), "50%".into()), ("age".into(), ">= 18".into()), ("x".into(), "  ".into())];
+        let (sql, params) = select_page("users", &RowKey::Rowid, Some(&("age".into(), true)), &filters, 200, 400);
+        assert_eq!(
+            sql,
+            r#"SELECT _rowid_, * FROM "users" WHERE CAST("name" AS TEXT) LIKE ? ESCAPE '\' AND "age" >= ? ORDER BY "age" DESC, _rowid_ LIMIT ? OFFSET ?"#
+        );
+        assert_eq!(
+            params,
+            vec![Cell::Text("%50\\%%".into()), Cell::Text("18".into()), Cell::Int("200".into()), Cell::Int("400".into())]
+        );
+    }
+
+    #[test]
+    fn page_for_view_and_pk_table() {
+        let (sql, _) = select_page("v", &RowKey::ReadOnly, None, &[], 10, 0);
+        assert_eq!(sql, r#"SELECT * FROM "v" LIMIT ? OFFSET ?"#);
+        let key = RowKey::Pk(vec!["a".into(), "b".into()]);
+        assert_eq!(update_cell("t", &key, "c"), r#"UPDATE "t" SET "c" = ? WHERE "a" = ? AND "b" = ?"#);
+        assert_eq!(delete_row("t", &RowKey::Rowid), r#"DELETE FROM "t" WHERE _rowid_ = ?"#);
+        assert_eq!(key.width(), 2);
+    }
+
+    #[test]
+    fn create_table_sql() {
+        let cols = vec![
+            ColumnDef { name: "id".into(), ty: "INTEGER".into(), pk: true, autoinc: true, ..Default::default() },
+            ColumnDef { name: "name".into(), ty: "TEXT".into(), not_null: true, default: "anon".into(), ..Default::default() },
+            ColumnDef { name: "n".into(), ty: "REAL".into(), default: "-1.5".into(), unique: true, ..Default::default() },
+        ];
+        assert_eq!(
+            create_table("t", &cols, false),
+            "CREATE TABLE \"t\" (\n\t\"id\" INTEGER PRIMARY KEY AUTOINCREMENT,\n\t\"name\" TEXT NOT NULL DEFAULT 'anon',\n\t\"n\" REAL UNIQUE DEFAULT -1.5\n)"
+        );
+        let pk2 = vec![
+            ColumnDef { name: "a".into(), pk: true, ..Default::default() },
+            ColumnDef { name: "b".into(), pk: true, default: "current_timestamp".into(), ..Default::default() },
+        ];
+        assert_eq!(
+            create_table("t", &pk2, true),
+            "CREATE TABLE \"t\" (\n\t\"a\",\n\t\"b\" DEFAULT current_timestamp,\n\tPRIMARY KEY (\"a\", \"b\")\n) WITHOUT ROWID"
+        );
+    }
+
+    #[test]
+    fn alter_and_index() {
+        assert_eq!(rename_column("t", "a", " b "), r#"ALTER TABLE "t" RENAME COLUMN "a" TO "b""#);
+        assert_eq!(drop_object("index", "ix"), r#"DROP INDEX "ix""#);
+        assert_eq!(
+            create_index("ix", "t", &["a".into(), "b".into()], true),
+            r#"CREATE UNIQUE INDEX "ix" ON "t" ("a", "b")"#
+        );
+    }
+}
