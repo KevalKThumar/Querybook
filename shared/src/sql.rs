@@ -123,6 +123,13 @@ pub fn delete_row(table: &str, key: &RowKey) -> String {
     format!("DELETE FROM {} WHERE {}", quote_ident(table), key.condition())
 }
 
+/// The first `max_bytes` of a value as hex, plus its full byte length.
+/// Params: the row's key cells. CAST makes TEXT count bytes like a BLOB.
+pub fn blob_hex(table: &str, key: &RowKey, column: &str, max_bytes: usize) -> String {
+    let bytes = format!("CAST({} AS BLOB)", quote_ident(column));
+    format!("SELECT hex(substr({bytes}, 1, {max_bytes})), length({bytes}) FROM {} WHERE {}", quote_ident(table), key.condition())
+}
+
 /// Copy one row into a new row; params: the row's key cells. `columns` should
 /// be the writable columns minus the rowid alias, so the copy gets a fresh key.
 pub fn duplicate_row(table: &str, key: &RowKey, columns: &[String]) -> String {
@@ -296,6 +303,14 @@ mod tests {
             r#"INSERT INTO "t" ("a", "b c") SELECT "a", "b c" FROM "t" WHERE _rowid_ = ?"#
         );
         assert_eq!(duplicate_row("t", &RowKey::Rowid, &[]), r#"INSERT INTO "t" DEFAULT VALUES"#);
+    }
+
+    #[test]
+    fn blob_hex_by_key() {
+        assert_eq!(
+            blob_hex("t", &RowKey::Pk(vec!["k".into()]), "b", 16),
+            r#"SELECT hex(substr(CAST("b" AS BLOB), 1, 16)), length(CAST("b" AS BLOB)) FROM "t" WHERE "k" = ?"#
+        );
     }
 
     #[test]
