@@ -109,7 +109,7 @@ fn values(params: &[Cell]) -> Result<Vec<Value>, AppError> {
 }
 
 fn collect(stmt: &mut Statement<'_>, params: Vec<Value>, cap: usize) -> Result<ResultSet, AppError> {
-    let columns: Vec<String> = stmt.column_names().into_iter().map(String::from).collect();
+    let columns: Vec<String> = stmt.column_names().map(String::from).collect();
     let n = columns.len();
     let mut out = ResultSet { columns, ..Default::default() };
     let mut rows = stmt.query(params_from_iter(params)).map_err(sql_err)?;

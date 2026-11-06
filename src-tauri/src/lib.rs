@@ -26,9 +26,9 @@ fn picked_path(p: Option<FilePath>) -> Res<Option<PathBuf>> {
     p.map(|p| p.into_path().map_err(io_err)).transpose()
 }
 
-/// Bind `path` to the calling window if it's empty, else focus the window that
-/// has it open, else open a new window for it.
-fn open_in(app: &AppHandle, caller: &WebviewWindow, path: PathBuf) -> Res<OpenOutcome> {
+/// Focus the window that has `path` open, else bind it to `caller` if that
+/// window is empty, else open a new window for it.
+fn open_in(app: &AppHandle, caller: Option<&WebviewWindow>, path: PathBuf) -> Res<OpenOutcome> {
     let path = fs::canonicalize(&path).unwrap_or(path);
     let reg = app.state::<Registry>();
     if let Some(label) = reg.find_path(&path) {
@@ -36,10 +36,11 @@ fn open_in(app: &AppHandle, caller: &WebviewWindow, path: PathBuf) -> Res<OpenOu
             let _ = w.unminimize();
             let _ = w.set_focus();
         }
-        return Ok(if label == caller.label() { OpenOutcome::ThisWindow } else { OpenOutcome::OtherWindow });
+        let here = caller.is_some_and(|c| c.label() == label);
+        return Ok(if here { OpenOutcome::ThisWindow } else { OpenOutcome::OtherWindow });
     }
     let title = path.file_name().map_or("Querybook".into(), |n| n.to_string_lossy().into_owned());
-    if reg.get(caller.label()).is_none_or(|s| s.path.is_none()) {
+    if let Some(caller) = caller.filter(|c| reg.get(c.label()).is_none_or(|s| s.path.is_none())) {
         reg.insert(caller.label(), Session::new(Some(path)));
         let _ = caller.set_title(&title);
         return Ok(OpenOutcome::ThisWindow);
@@ -80,7 +81,7 @@ async fn open_dialog(app: AppHandle, window: WebviewWindow, create: bool) -> Res
             let _ = fs::remove_file(format!("{}{suffix}", path.display()));
         }
     }
-    open_in(&app, &window, path)
+    open_in(&app, Some(&window), path)
 }
 
 /// Open a recent file by path.
@@ -90,7 +91,30 @@ async fn open_path(app: AppHandle, window: WebviewWindow, path: String) -> Res<O
     if !path.exists() {
         return Err(invalid("That file no longer exists."));
     }
-    open_in(&app, &window, path)
+    open_in(&app, Some(&window), path)
+}
+
+/// Files opened from Finder (double-click, Open With, drop on the Dock icon).
+/// macOS sends these as an Apple event, not argv, and on a cold launch it
+/// arrives after setup, once "main" exists.
+#[cfg(target_os = "macos")]
+fn open_from_finder(app: &AppHandle, urls: &[tauri::Url]) {
+    let main = app.get_webview_window("main");
+    for path in urls.iter().filter_map(|u| u.to_file_path().ok()).filter(|p| p.is_file()) {
+        let canonical = fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
+        let already_open = app.state::<Registry>().find_path(&canonical).is_some();
+        match open_in(app, main.as_ref(), path) {
+            // Bound to the empty "main" window: reload it so it picks up the file,
+            // whether it's showing the welcome screen or still loading.
+            Ok(OpenOutcome::ThisWindow) if !already_open => {
+                if let Some(w) = &main {
+                    let _ = w.eval("window.location.replace('/')");
+                }
+            }
+            Err(e) => app.dialog().message(e.message).title("Couldn't open the file").kind(MessageDialogKind::Error).show(|_| {}),
+            _ => {}
+        }
+    }
 }
 
 #[tauri::command]
@@ -255,6 +279,14 @@ pub fn run() {
             export_csv,
             export_sql_dump,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Opened { urls } = event {
+                open_from_finder(app, &urls);
+            }
+            #[cfg(not(target_os = "macos"))]
+            let _ = (app, event);
+        });
 }

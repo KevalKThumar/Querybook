@@ -154,10 +154,8 @@ pub fn sql(src: &str) -> String {
                         }
                     }
                 }
-                if let Some(clause) = CLAUSES.iter().find(|c| **c == upper) {
-                    if !(upper == "SET" && prev_was_kw) {
-                        frame.clause = clause;
-                    }
+                if let Some(clause) = CLAUSES.iter().find(|c| **c == upper).filter(|_| !(upper == "SET" && prev_was_kw)) {
+                    frame.clause = clause;
                 }
                 if upper == "BETWEEN" {
                     frame.between = true;

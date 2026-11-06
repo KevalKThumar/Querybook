@@ -28,7 +28,7 @@ pub fn welcome_view(
 
             <div class="welcome-card">
                 <div class="welcome-brand d-flex align-items-center gap-3 mb-4">
-                    <i class="bi bi-database-fill-lock"></i>
+                    <img class="welcome-logo" src="/querybook.png" alt="" />
                     <div>
                         <h1 class="welcome-title mb-0">"Querybook"</h1>
                         <div class="text-body-secondary">"SQLite & SQLCipher browser"</div>
