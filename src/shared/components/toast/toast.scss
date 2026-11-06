@@ -1,0 +1,46 @@
+@use "../../../../styles/variables" as *;
+
+/* ── Toast stack — fixed bottom-right ── */
+.toast-stack {
+  position: fixed;
+  right: $spacing-lg;
+  bottom: calc(#{$height-statusbar} + #{$spacing-md});
+  z-index: $z-toast;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+  max-width: 420px;
+  pointer-events: none;
+}
+
+/* ── Individual toast card ── */
+.toast-card {
+  pointer-events: all;
+  display: flex;
+  align-items: flex-start;
+  gap: $spacing-sm;
+  padding: $spacing-sm $spacing-md;
+  border-radius: $radius;
+  border: 1px solid $border;
+  background: $bg;
+  box-shadow: $shadow-dialog;
+  font-size: $font-size-sm;
+  animation: toast-in 0.18s ease;
+
+  > .bi { margin-top: 2px; }
+
+  &--success > .bi { color: $success; }
+  &--error > .bi { color: $danger; }
+}
+
+.toast-message {
+  flex: 1;
+  word-break: break-word;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}

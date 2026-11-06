@@ -1,0 +1,64 @@
+@use "variables" as *;
+
+/* ── Virtual data grid shared styles ──
+   Used by data_grid (table browsing) and result_grid (SQL results): a scroll
+   container with a sticky header row and absolutely positioned body rows. */
+
+@mixin grid-scroll {
+  position: relative;
+  overflow: auto;
+  background: $bg;
+  font-size: $font-size-sm;
+}
+
+@mixin grid-head-row {
+  position: sticky;
+  top: 0;
+  z-index: $z-sticky;
+  display: flex;
+  height: $height-row;
+  min-width: 100%;
+  background: $bg-raised;
+  box-shadow: inset 0 -1px 0 $border;
+}
+
+@mixin grid-row {
+  position: absolute;
+  left: 0;
+  display: flex;
+  height: $height-row;
+  min-width: 100%;
+  border-bottom: 1px solid $border;
+
+  &:hover { background: $bg-hover; }
+  &.selected { background: $bg-selected; }
+}
+
+@mixin grid-cell {
+  flex: 0 0 $width-column;
+  width: $width-column;
+  height: 100%;
+  padding: 0 $spacing-sm;
+  display: flex;
+  align-items: center;
+  border-right: 1px solid $border;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+
+  &.numeric { justify-content: flex-end; font-variant-numeric: tabular-nums; }
+  &.null, &.blob { color: $text-muted; font-style: italic; }
+}
+
+@mixin grid-rownum {
+  flex: 0 0 $width-rownum;
+  width: $width-rownum;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 $spacing-sm;
+  color: $text-muted;
+  background: $bg-subtle;
+  border-right: 1px solid $border;
+  font-variant-numeric: tabular-nums;
+}

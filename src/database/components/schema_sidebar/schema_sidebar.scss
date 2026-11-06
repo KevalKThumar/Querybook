@@ -1,0 +1,41 @@
+@use "../../../../styles/variables" as *;
+
+.sidebar {
+  flex: 0 0 $width-sidebar;
+  width: $width-sidebar;
+  border-right: 1px solid $border;
+  background: $bg-subtle;
+  font-size: $font-size-sm;
+}
+
+.sidebar-group-head {
+  padding: $spacing-xs $spacing-sm;
+  font-size: $font-size-xs;
+  font-weight: $font-weight-semibold;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: $text-muted;
+  cursor: pointer;
+}
+
+.sidebar-count {
+  font-weight: normal;
+  font-variant-numeric: tabular-nums;
+}
+
+.sidebar-item {
+  height: 26px;
+  margin: 0 $spacing-xs;
+  padding: 0 $spacing-xs 0 $spacing-lg;
+  border-radius: $radius-sm;
+  cursor: pointer;
+
+  > .bi { color: $text-muted; }
+  &:hover { background: $bg-hover; }
+  &:hover .sidebar-item-info { visibility: visible; }
+}
+
+.sidebar-item-info {
+  visibility: hidden;
+  color: $text-muted;
+}

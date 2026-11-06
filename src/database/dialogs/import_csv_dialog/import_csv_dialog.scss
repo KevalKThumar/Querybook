@@ -1,0 +1,30 @@
+@use "../../../../styles/variables" as *;
+
+.csvimp-file {
+  font-size: $font-size-sm;
+  color: $text-muted;
+}
+
+.csvimp-label {
+  margin-bottom: 2px;
+  font-size: $font-size-xs;
+  color: $text-muted;
+}
+
+.csvimp-check { white-space: nowrap; cursor: pointer; font-size: $font-size-sm; }
+
+.csvimp-preview {
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid $border;
+  border-radius: $radius;
+  font-size: $font-size-xs;
+
+  th, td { white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+  th { position: sticky; top: 0; background: $bg-raised; }
+}
+
+.csvimp-note {
+  font-size: $font-size-xs;
+  color: $text-muted;
+}

@@ -1,0 +1,17 @@
+@use "../../../../styles/variables" as *;
+
+.sqlcode {
+  margin: 0;
+  font-family: $font-mono;
+  font-size: $font-size-sm;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: $text;
+}
+
+.sqlcode-keyword { color: $syn-keyword; font-weight: $font-weight-semibold; }
+.sqlcode-ident { color: $syn-ident; }
+.sqlcode-string { color: $syn-string; }
+.sqlcode-number { color: $syn-number; }
+.sqlcode-comment { color: $syn-comment; font-style: italic; }

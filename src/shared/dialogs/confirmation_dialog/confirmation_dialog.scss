@@ -1,0 +1,7 @@
+@use "../../../../styles/variables" as *;
+
+.confirm-message {
+  color: $text;
+  line-height: 1.5;
+  word-break: break-word;
+}

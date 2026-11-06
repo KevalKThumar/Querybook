@@ -1,0 +1,25 @@
+@use "../../../../styles/variables" as *;
+
+.newtable-label {
+  margin-bottom: 2px;
+  font-size: $font-size-xs;
+  color: $text-muted;
+}
+
+.newtable-check { white-space: nowrap; cursor: pointer; font-size: $font-size-sm; }
+
+.newtable-columns {
+  font-size: $font-size-sm;
+  th { font-weight: $font-weight-semibold; color: $text-muted; }
+}
+
+.newtable-type { width: 150px; }
+
+.newtable-preview {
+  max-height: 160px;
+  overflow: auto;
+  padding: $spacing-sm $spacing-md;
+  border: 1px solid $border;
+  border-radius: $radius;
+  background: $bg-subtle;
+}

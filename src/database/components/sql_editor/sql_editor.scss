@@ -1,0 +1,71 @@
+@use "../../../../styles/variables" as *;
+
+.sqled-toolbar {
+  flex: 0 0 36px;
+  border-bottom: 1px solid $border;
+}
+
+.sqled-hint {
+  font-size: $font-size-xs;
+  color: $text-muted;
+}
+
+/* Textarea over a highlighted <pre>: identical box + font metrics. */
+.sqled-input {
+  position: relative;
+  flex: 0 0 38%;
+  min-height: 120px;
+  border-bottom: 1px solid $border;
+  background: $bg;
+}
+
+// `.sqled-input >` beats `.sqlcode` (loaded later) so both layers wrap identically.
+.sqled-input > .sqled-layer {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: $spacing-md;
+  border: none;
+  font-family: $font-mono;
+  font-size: $font-size-sm;
+  line-height: 1.55;
+  letter-spacing: normal;
+  tab-size: 4;
+  white-space: pre;
+  word-wrap: normal;
+  word-break: normal;
+}
+
+.sqled-highlight {
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.sqled-textarea {
+  overflow: auto;
+  resize: none;
+  outline: none;
+  background: transparent;
+  color: transparent;
+  caret-color: $text;
+
+  &::placeholder { color: $text-muted; }
+  &::selection { background: $bg-selected; color: transparent; }
+}
+
+.sqled-status {
+  flex: 0 0 26px;
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid $border;
+  background: $bg-subtle;
+  font-size: $font-size-xs;
+  color: $text-muted;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.sqled-results { min-height: 0; }

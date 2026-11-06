@@ -1,0 +1,34 @@
+// global.scss
+// ── Single stylesheet entry point ──
+// This is the ONLY .scss linked from index.html. It @use's the shared base
+// styles and every component's scss, so Trunk compiles one combined CSS file
+// instead of one per component.
+//
+// Rules:
+//  • @use statements must come before any style rule, so this file contains
+//    only @use's (no CSS of its own — the reset lives in base.scss).
+//  • Shared design tokens / mixins live in variables.scss and mixins.scss and
+//    are pulled in by each component, not here.
+//  • To add a component: create its .scss and add one @use line here.
+
+// Base reset + reusable element classes (loaded first — see base.scss).
+@use "base";
+
+// ── Shared: dialogs & components ──
+@use "../src/shared/components/toast/toast";
+@use "../src/shared/dialogs/dialog_shell/dialog_shell";
+@use "../src/shared/dialogs/confirmation_dialog/confirmation_dialog";
+@use "../src/shared/dialogs/prompt_dialog/prompt_dialog";
+
+// ── Database module ──
+@use "../src/database/welcome/welcome";
+@use "../src/database/browser/browser";
+@use "../src/database/components/schema_sidebar/schema_sidebar";
+@use "../src/database/components/data_grid/data_grid";
+@use "../src/database/components/result_grid/result_grid";
+@use "../src/database/components/structure_view/structure_view";
+@use "../src/database/components/sql_editor/sql_editor";
+@use "../src/database/components/sql_code/sql_code";
+@use "../src/database/dialogs/cipher_dialog/cipher_dialog";
+@use "../src/database/dialogs/create_table_dialog/create_table_dialog";
+@use "../src/database/dialogs/import_csv_dialog/import_csv_dialog";

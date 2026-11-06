@@ -1,0 +1,41 @@
+@use "../../../../styles/variables" as *;
+
+.cipher-dialog { width: 480px; }
+
+.cipher-intro {
+  font-size: $font-size-sm;
+  color: $text-muted;
+}
+
+.cipher-label {
+  margin-bottom: 2px;
+  font-size: $font-size-xs;
+  color: $text-muted;
+}
+
+.cipher-key-type { max-width: 130px; }
+
+.cipher-settings {
+  margin-top: $spacing-md;
+  padding: $spacing-sm $spacing-md;
+  border: 1px solid $border;
+  border-radius: $radius;
+  background: $bg-subtle;
+  font-size: $font-size-xs;
+}
+
+.cipher-settings-title {
+  margin-bottom: $spacing-xs;
+  font-weight: $font-weight-semibold;
+  > .bi { color: $success; }
+}
+
+.cipher-defaults {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px $spacing-md;
+  color: $text-muted;
+
+  dt { font-weight: normal; }
+  dd { margin: 0; font-family: $font-mono; color: $text; }
+}

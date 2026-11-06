@@ -1,0 +1,52 @@
+@use "../../../../styles/variables" as *;
+
+/* ── Backdrop — card floats near the top, like a macOS sheet ── */
+.shell-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: $z-dialog-bg;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 72px;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.shell-dialog {
+  z-index: $z-dialog;
+  width: 460px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 110px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid $border;
+  border-radius: $radius-lg;
+  background: $bg;
+  box-shadow: $shadow-dialog;
+
+  &.shell-dialog--wide { width: 760px; }
+}
+
+/* Shared card sections used by every dialog */
+.shell-header {
+  padding: $spacing-md $spacing-lg;
+  border-bottom: 1px solid $border;
+  font-size: $font-size-lg;
+  font-weight: $font-weight-semibold;
+}
+
+.shell-body {
+  padding: $spacing-lg;
+  overflow: auto;
+}
+
+.shell-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: $spacing-sm;
+  padding: $spacing-md $spacing-lg;
+  border-top: 1px solid $border;
+  background: $bg-subtle;
+}

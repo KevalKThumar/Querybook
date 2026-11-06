@@ -1,0 +1,6 @@
+@use "../../../../styles/variables" as *;
+
+.prompt-label {
+  font-size: $font-size-sm;
+  color: $text-muted;
+}

@@ -110,6 +110,12 @@ pub fn tokenize(src: &str) -> Vec<(Tok, &str)> {
     out
 }
 
+/// True if any keyword token in `src` is one of `words` (case-insensitive).
+/// Keywords inside strings, comments and quoted identifiers don't count.
+pub fn has_keyword(src: &str, words: &[&str]) -> bool {
+    tokenize(src).iter().any(|(t, s)| *t == Tok::Keyword && words.iter().any(|w| w.eq_ignore_ascii_case(s)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -131,6 +137,13 @@ mod tests {
         assert_eq!(find("név"), Some(Tok::Ident));
         assert_eq!(find("where"), None);
         assert_eq!(find("WHERE"), Some(Tok::Keyword));
+    }
+
+    #[test]
+    fn keyword_check_ignores_strings_and_comments() {
+        let words = ["DELETE", "DROP"];
+        assert!(!has_keyword("SELECT 'drop' -- delete\nFROM t", &words));
+        assert!(has_keyword("select 1; delete from t", &words));
     }
 
     #[test]

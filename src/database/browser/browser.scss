@@ -1,0 +1,82 @@
+@use "../../../styles/variables" as *;
+
+/* ── Toolbar ── */
+.browser-toolbar {
+  flex: 0 0 $height-toolbar;
+  border-bottom: 1px solid $border;
+  background: $bg-subtle;
+  overflow-x: auto;
+}
+
+.browser-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  color: $text;
+  white-space: nowrap;
+
+  &:hover:not(:disabled) { background: $bg-hover; }
+  &:disabled { border: none; }
+}
+
+.browser-pending {
+  font-size: $font-size-sm;
+  color: $text-muted;
+  white-space: nowrap;
+
+  > .bi { color: $warning; font-size: 8px; vertical-align: middle; }
+}
+
+/* ── Tabs ── */
+.browser-tabs {
+  flex: 0 0 $height-tabbar;
+  border-bottom: 1px solid $border;
+  background: $bg-subtle;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.browser-tab {
+  max-width: 220px;
+  padding: 0 $spacing-xs 0 $spacing-md;
+  border-right: 1px solid $border;
+  color: $text-muted;
+  cursor: pointer;
+  white-space: nowrap;
+
+  &:hover { background: $bg-hover; }
+
+  &.active {
+    background: $bg;
+    color: $text;
+    box-shadow: inset 0 2px 0 $primary;
+  }
+}
+
+.browser-tab-close {
+  opacity: 0.5;
+  &:hover { opacity: 1; }
+}
+
+.browser-tab-add {
+  padding: 0 $spacing-md;
+  color: $text-muted;
+}
+
+/* ── Panes ── */
+.browser-panes { min-height: 0; }
+
+.browser-pane {
+  position: absolute;
+  inset: 0;
+}
+
+/* ── Status bar ── */
+.browser-status {
+  flex: 0 0 $height-statusbar;
+  border-top: 1px solid $border;
+  background: $bg-subtle;
+  color: $text-muted;
+  font-size: $font-size-xs;
+}

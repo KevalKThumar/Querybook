@@ -1,11 +1,19 @@
-<!doctype html>
-<html>
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
   <head>
     <meta charset="utf-8" />
-    <title>Tauri + Leptos App</title>
-    <link data-trunk rel="css" href="styles.css" />
-    <link data-trunk rel="copy-dir" href="public" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Querybook</title>
+
+    <!-- Bootstrap 5 + Bootstrap Icons — vendored (same versions as Prompt Builder's CDN links) so the desktop app works offline -->
+    <link data-trunk rel="copy-dir" href="assets/vendor" />
+    <link rel="stylesheet" href="/vendor/bootstrap.min.css" />
+    <link rel="stylesheet" href="/vendor/bootstrap-icons/bootstrap-icons.min.css" />
+
+    <!-- Trunk entry point: builds the Rust/Wasm binary -->
     <link data-trunk rel="rust" data-wasm-opt="z" />
+    <link data-trunk rel="scss" href="styles/global.scss" />
   </head>
-  <body></body>
+  <body>
+  </body>
 </html>

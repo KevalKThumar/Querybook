@@ -1,0 +1,60 @@
+@use "../../../../styles/variables" as *;
+
+.struct-inner {
+  max-width: 980px;
+  padding: $spacing-lg $spacing-xl;
+}
+
+.struct-header > .bi { font-size: 1.4rem; color: $text-muted; }
+
+.struct-title {
+  font-size: $font-size-lg + 3px;
+  font-weight: $font-weight-semibold;
+}
+
+.struct-section {
+  margin: $spacing-lg 0 $spacing-sm;
+  font-size: $font-size-xs;
+  font-weight: $font-weight-semibold;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: $text-muted;
+}
+
+.struct-table {
+  font-size: $font-size-sm;
+  th { font-weight: $font-weight-semibold; color: $text-muted; }
+}
+
+.struct-num { width: 36px; color: $text-muted; }
+
+.struct-form {
+  padding: $spacing-md;
+  border: 1px dashed $border;
+  border-radius: $radius;
+}
+
+.struct-label {
+  margin-bottom: 2px;
+  font-size: $font-size-xs;
+  color: $text-muted;
+}
+
+.struct-type { width: 150px; }
+
+.struct-chip {
+  border: 1px solid $border;
+  color: $text;
+  &.active { background: $primary-soft; border-color: $primary; color: $primary; }
+}
+
+.struct-sql {
+  padding: $spacing-md;
+  border: 1px solid $border;
+  border-radius: $radius;
+  background: $bg-subtle;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.struct-check { white-space: nowrap; cursor: pointer; }

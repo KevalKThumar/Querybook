@@ -1,0 +1,84 @@
+// Shared design tokens
+// Imported by global.scss and every component/dialog .scss via:
+//   @use "<relative-path>/styles/variables" as *;
+// Only values reused by 2+ stylesheets live here. Single-use,
+// component-specific values stay inline in that component's .scss.
+//
+// Colours point at Bootstrap's CSS variables (or our own --qb-* ones defined in
+// base.scss), so `data-bs-theme="light" | "dark"` on <html> themes everything.
+
+// Surfaces
+$bg:             var(--bs-body-bg);      // grid / editor / main content
+$bg-subtle:      var(--bs-tertiary-bg);  // toolbar, sidebar, headers, status bar
+$bg-raised:      var(--bs-secondary-bg); // sticky header cells, chips
+$bg-hover:       var(--qb-hover);        // hovered row / list item
+$bg-selected:    var(--qb-selected);     // selected row / active list item
+
+// Borders
+$border:         var(--bs-border-color);
+
+// Text
+$text:           var(--bs-body-color);
+$text-muted:     var(--bs-secondary-color);
+
+// Brand
+$primary:        var(--bs-primary);
+$primary-soft:   var(--bs-primary-bg-subtle);
+
+// Feedback
+$danger:         var(--bs-danger);
+$warning:        var(--bs-warning);
+$success:        var(--bs-success);
+
+// SQL syntax highlighting
+$syn-keyword:    var(--qb-syn-keyword);
+$syn-string:     var(--qb-syn-string);
+$syn-number:     var(--qb-syn-number);
+$syn-comment:    var(--qb-syn-comment);
+$syn-ident:      var(--qb-syn-ident);
+
+// Typography
+$font-primary:   system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+$font-mono:      ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+
+$font-size-xs:   11px;
+$font-size-sm:   12px;
+$font-size-base: 13px;
+$font-size-lg:   15px;
+$font-size-xl:   22px;
+
+$font-weight-medium:   500;
+$font-weight-semibold: 600;
+
+// Spacing
+$spacing-xs:  4px;
+$spacing-sm:  8px;
+$spacing-md:  12px;
+$spacing-lg:  16px;
+$spacing-xl:  24px;
+
+// Border Radius
+$radius-sm:  4px;
+$radius:     6px;
+$radius-lg:  10px;
+
+// Component Heights / Widths
+$height-toolbar:    44px;
+$height-tabbar:     34px;
+$height-statusbar:  26px;
+$height-row:        28px;   // grid row height — must match ROW_HEIGHT in database_constant.rs
+$width-sidebar:     260px;
+$width-column:      180px;  // grid column — must match COLUMN_WIDTH in database_constant.rs
+$width-rownum:      56px;   // grid row-number gutter — must match ROWNUM_WIDTH
+
+// Shadows
+$shadow-dialog: 0 16px 48px rgba(0, 0, 0, 0.28);
+
+// Transitions
+$transition-fast: 0.12s;
+
+// Z-index
+$z-sticky:     2;
+$z-dialog-bg:  200;
+$z-dialog:     201;
+$z-toast:      9999;

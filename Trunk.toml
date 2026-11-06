@@ -1,9 +1,13 @@
 [build]
-target = "./index.html"
+target = "index.html"
+# Emit stable asset names (global.css, not global-<hash>.css).
+filehash = false
 
 [watch]
 ignore = ["./src-tauri"]
 
 [serve]
+addresses = ["127.0.0.1"]
+# Must match build.devUrl in src-tauri/tauri.conf.json.
 port = 1420
 open = false

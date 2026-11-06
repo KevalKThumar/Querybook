@@ -123,18 +123,19 @@ impl std::fmt::Display for AppError {
 }
 
 /// What the file on disk looks like, from its header.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FileKind {
     /// Starts with the plain SQLite header.
     Plain,
     /// Non-empty but no SQLite header: SQLCipher (or not a database at all).
     Encrypted,
     /// Missing or empty: a new database.
+    #[default]
     New,
 }
 
 /// State of the database bound to the calling window.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct SessionInfo {
     /// None for an empty (welcome) window.
     pub path: Option<String>,

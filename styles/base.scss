@@ -1,0 +1,85 @@
+// base.scss
+// Theme tokens, global reset + reusable element classes. @use'd FIRST by
+// global.scss — before any component — so the reset loads ahead of component styles.
+@use "variables" as *;
+
+/* ── Theme tokens not covered by Bootstrap's own CSS variables ── */
+:root,
+[data-bs-theme="light"] {
+  --qb-hover: rgba(0, 0, 0, 0.04);
+  --qb-selected: #dbe7fd;
+  --qb-syn-keyword: #8b3dd6;
+  --qb-syn-string: #c2410c;
+  --qb-syn-number: #0b7d6e;
+  --qb-syn-comment: #8a94a0;
+  --qb-syn-ident: #1d4ed8;
+}
+
+[data-bs-theme="dark"] {
+  --qb-hover: rgba(255, 255, 255, 0.05);
+  --qb-selected: #253a5f;
+  --qb-syn-keyword: #c792ea;
+  --qb-syn-string: #f0a46c;
+  --qb-syn-number: #5ccfb9;
+  --qb-syn-comment: #6b7480;
+  --qb-syn-ident: #82aaff;
+}
+
+/* ── Global Reset ── */
+:root {
+  // Desktop density: Bootstrap sizes everything in rem.
+  font-size: $font-size-base;
+  --bs-body-font-family: #{$font-primary};
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  height: 100vh;
+  overflow: hidden;
+  font-family: $font-primary;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+input, textarea, pre {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* ── App root ── */
+.app {
+  font-family: $font-primary;
+}
+
+/* ── Icon button reset ── */
+.icon-btn {
+  background: none;
+  border: none;
+  padding: $spacing-xs;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  border-radius: $radius-sm;
+  color: inherit;
+
+  &:hover { background: $bg-hover; }
+  &:focus-visible { outline: 2px solid $primary; outline-offset: 1px; }
+}
+
+/* ── Empty / placeholder state ── */
+.empty-state {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: $spacing-sm;
+  padding: $spacing-xl;
+  color: $text-muted;
+  text-align: center;
+
+  > .bi { font-size: 2rem; opacity: 0.6; }
+}
