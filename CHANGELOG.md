@@ -2,6 +2,14 @@
 
 All notable changes to Querybook are listed here. Versions follow [Semantic Versioning](https://semver.org).
 
+## [Unreleased]
+
+### Added
+- Change history: a **History** tab lists the last 3 saves made to the database on this device. Each shows the schema changes and the rows inserted, updated and deleted, with old and new values. Every save is kept (until **Clear history**) in Querybook's app data folder, one history per database. An encrypted database's history is encrypted with its key and follows key changes.
+
+### Changed
+- Write Changes is its own command, so every save can be recorded.
+
 ## [1.0.0] — 2026-11-07
 
 First release for Windows, alongside macOS.

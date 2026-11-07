@@ -75,6 +75,13 @@ requests: your data never leaves your computer.
 - One-click **Integrity check**, **Quick check**, **Foreign key check**, **Optimize** and **VACUUM**.
 - Turn foreign-key enforcement on or off.
 
+**Change history**
+- The **History** tab lists the last 3 saves made to the database, newest first. Each save shows when it was made, the tables, views, indexes and triggers it created, changed or dropped (with their SQL), and the rows it inserted, updated and deleted, with old and new values (an update shows only the columns that changed).
+- Every save is recorded, whether it came from Write Changes (⌘S / Ctrl+S), **Save** when closing, or a `COMMIT` in the SQL editor. Reverted changes, and edits that end up where they started, aren't listed.
+- The history stays on this computer, in Querybook's app data folder, and never goes into the database file. Each database has its own, and it's kept until you **Clear history**. It belongs to the file's path, so a moved or renamed database starts a new one.
+- For an encrypted database the history is encrypted with that database's key, and changes when the key does. Only someone who can open the database can read it.
+- Up to 1,000 rows of each save are kept with their values; past that, rows are only counted. Long text is cut at 200 characters, and BLOBs are shown by size.
+
 ## Install
 
 ### macOS

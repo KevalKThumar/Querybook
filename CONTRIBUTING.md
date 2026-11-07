@@ -20,7 +20,7 @@ Querybook/
 │   ├── database/         # the feature module
 │   │   ├── browser/      #   the database window: toolbar, tabs, status bar
 │   │   ├── welcome/      #   the empty-window screen
-│   │   ├── components/   #   grid, data_grid, sql_editor, structure_view, cell_inspector, database_info, …
+│   │   ├── components/   #   grid, data_grid, sql_editor, structure_view, cell_inspector, database_info, change_history, …
 │   │   ├── dialogs/      #   cipher, create_table, import_csv, export_sql, snippets
 │   │   ├── database_service.rs    # the only place that calls the backend
 │   │   ├── database_constant.rs   # command names, SQL used by the UI, limits
@@ -28,7 +28,9 @@ Querybook/
 │   └── shared/           # context menu, toasts, dialog shell, services (IPC bridge, clipboard, storage, theme, platform)
 ├── shared/               # pure Rust shared by UI and backend: wire types, SQL builders,
 │                         # lexer, autocomplete, formatter, copy formats, shortcut labels (all unit-tested)
-├── src-tauri/            # native backend: windows, file dialogs, SQLite/SQLCipher sessions, import/export
+├── src-tauri/            # native backend: windows, file dialogs, SQLite/SQLCipher sessions, import/export,
+│                         # change history (history.rs)
+├── .cargo/config.toml    # SQLite compile flags (the preupdate hook the change history uses)
 ├── styles/               # global.scss (only @use lines), variables, mixins, base
 └── assets/               # vendored Bootstrap + icons, the app logo
 ```
@@ -39,6 +41,7 @@ How it fits together:
 - **Thin SQL gateway.** The backend exposes `query`, `execute` and `exec_script` with bound parameters. All SQL text is built in the `shared` crate, which quotes identifiers and passes values as `?` parameters.
 - **Numbers travel as strings.** JavaScript numbers lose precision above 2^53, so integers and reals cross the IPC boundary as text.
 - **Pending changes.** The first edit opens `SAVEPOINT querybook`. **Write** runs `COMMIT` and **Revert** runs `ROLLBACK`.
+- **Change history.** A SQLite preupdate hook remembers how each row looked before the pending changes first touched it. Just before a COMMIT, every remembered row is compared with how it looks now, so rolled-back or undone edits drop out. Each save is stored in a per-database history file in the app data folder, encrypted with the database's key when the database is encrypted.
 
 ## Conventions
 
