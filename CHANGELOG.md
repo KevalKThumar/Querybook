@@ -11,6 +11,7 @@ First release for Windows, alongside macOS.
 - Keyboard hints, tooltips and menus show Ctrl / Alt / Shift on Windows.
 
 ### Changed
+- Import SQL no longer writes on its own: a script's `BEGIN … COMMIT` joins the pending changes until you write them.
 - Nothing is saved automatically. Statements run in the SQL editor or from a `.sql` script now join the pending changes too, so only Write Changes (⌘S / Ctrl+S) writes them. VACUUM and PRAGMA still run directly.
 - Closing a window with unwritten changes now asks **Save**, **Don't Save** or **Cancel** (before, the only choices were Discard and Cancel).
 

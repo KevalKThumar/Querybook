@@ -66,7 +66,7 @@ requests: your data never leaves your computer.
 
 **Import and export**
 - Import CSV or TSV into a new or existing table, with a preview and a choice of separator.
-- Run a `.sql` script.
+- Run a `.sql` script. If it has its own `BEGIN … COMMIT`, that joins the pending changes as well, so the script is only saved when you write the changes.
 - Export a table to CSV, or the whole database as a SQL dump.
 
 **Database tab**

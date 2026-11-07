@@ -259,7 +259,7 @@ async fn import_csv(
 async fn import_sql(window: WebviewWindow, reg: State<'_, Registry>, path: String) -> Res<ScriptOutcome> {
     let s = reg.session(window.label())?;
     let sql = fs::read_to_string(path).map_err(io_err)?;
-    blocking(move || s.with_conn(|c| Ok(db::exec_script(c, &sql)))).await
+    blocking(move || s.with_conn(|c| Ok(db::exec_import(c, &sql)))).await
 }
 
 fn save_path(app: &AppHandle, window: &WebviewWindow, file_name: &str, filter: (&str, &[&str])) -> Res<Option<PathBuf>> {

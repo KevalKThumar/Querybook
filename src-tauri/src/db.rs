@@ -137,6 +137,17 @@ pub fn execute(conn: &Connection, sql: &str, params: &[Cell]) -> Result<ExecOutc
 /// Nothing is saved automatically: the first statement that writes opens the
 /// pending savepoint, so it waits for Write Changes like any grid edit.
 pub fn exec_script(conn: &Connection, sql: &str) -> ScriptOutcome {
+    run_script(conn, sql, false)
+}
+
+/// Run a `.sql` file (Import SQL). The script's own `BEGIN … COMMIT` joins the
+/// pending changes: BEGIN opens the savepoint and COMMIT / END leave it open,
+/// so nothing reaches the file until the user writes the changes.
+pub fn exec_import(conn: &Connection, sql: &str) -> ScriptOutcome {
+    run_script(conn, sql, true)
+}
+
+fn run_script(conn: &Connection, sql: &str, import: bool) -> ScriptOutcome {
     let start = Instant::now();
     let before = conn.total_changes();
     let mut out = ScriptOutcome::default();
@@ -145,6 +156,18 @@ pub fn exec_script(conn: &Connection, sql: &str) -> ScriptOutcome {
         let step = batch.next().map_err(sql_err).and_then(|stmt| match stmt {
             None => Ok(false),
             Some(mut st) => {
+                if import {
+                    let text = st.expanded_sql().unwrap_or_default();
+                    if sql::is_txn_end(&text) {
+                        return Ok(true);
+                    }
+                    if sql::is_txn_begin(&text) {
+                        if conn.is_autocommit() {
+                            conn.execute_batch(sql::BEGIN_EDIT).map_err(sql_err)?;
+                        }
+                        return Ok(true);
+                    }
+                }
                 begin_pending_for(conn, &st)?;
                 if st.column_count() > 0 {
                     out.result = Some(collect(&mut st, vec![], ROW_CAP)?);
@@ -486,6 +509,36 @@ pub mod tests {
         let out = run("VACUUM");
         assert!(out.error.is_none() && !out.in_txn);
         s.write_pending().unwrap();
+    }
+
+    /// Import SQL: an exported script's own BEGIN … COMMIT doesn't write the file.
+    #[test]
+    fn imported_scripts_wait_for_write_changes() {
+        let path = tmp_dir("import").join("i.db");
+        let s = Session::new(Some(path.clone()));
+        s.connect(None).unwrap();
+        let import = |sql: &str| s.with_conn(|c| Ok(exec_import(c, sql))).unwrap();
+        let other = open_conn(&path, None).unwrap();
+        let rows = |c: &Connection| c.query_row("SELECT count(*) FROM sqlite_master WHERE name = 't'", [], |r| r.get::<_, i64>(0)).unwrap();
+
+        let script = "BEGIN TRANSACTION;\nPRAGMA defer_foreign_keys = ON;\nCREATE TABLE t(x);\nINSERT INTO t VALUES (1);\nCOMMIT;";
+        let out = import(script);
+        assert!(out.error.is_none(), "{:?}", out.error);
+        assert_eq!(out.statements, 5);
+        assert!(out.in_txn && s.has_pending());
+        assert_eq!(rows(&other), 0);
+
+        // A second import while changes are pending joins them instead of failing on BEGIN.
+        let out = import("BEGIN; INSERT INTO t VALUES (2); END;");
+        assert!(out.error.is_none() && out.in_txn);
+        s.write_pending().unwrap();
+        assert_eq!(rows(&other), 1);
+        assert_eq!(count(&other), 2);
+
+        // The SQL editor still runs a typed COMMIT as written.
+        let out = s.with_conn(|c| Ok(exec_script(c, "BEGIN; INSERT INTO t VALUES (3); COMMIT;"))).unwrap();
+        assert!(out.error.is_none() && !out.in_txn);
+        assert_eq!(count(&other), 3);
     }
 
     #[test]

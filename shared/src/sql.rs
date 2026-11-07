@@ -17,6 +17,16 @@ pub fn runs_outside_transaction(statement: &str) -> bool {
     starts_with_keyword(statement, &["VACUUM", "PRAGMA"])
 }
 
+/// `BEGIN [DEFERRED | IMMEDIATE | EXCLUSIVE] [TRANSACTION]`.
+pub fn is_txn_begin(statement: &str) -> bool {
+    starts_with_keyword(statement, &["BEGIN"])
+}
+
+/// `COMMIT` or its alias `END [TRANSACTION]`.
+pub fn is_txn_end(statement: &str) -> bool {
+    starts_with_keyword(statement, &["COMMIT", "END"])
+}
+
 /// Tokens that aren't comments or whitespace, with the byte offset each one ends at.
 fn significant_tokens(src: &str) -> Vec<(usize, Tok, &str)> {
     let mut end = 0;
@@ -288,6 +298,17 @@ mod tests {
         assert!(!runs_outside_transaction("SELECT 'VACUUM'"));
         assert!(!runs_outside_transaction("INSERT INTO t VALUES (1)"));
         assert!(!runs_outside_transaction(""));
+    }
+
+    #[test]
+    fn transaction_statements() {
+        assert!(is_txn_begin("BEGIN TRANSACTION"));
+        assert!(is_txn_begin("-- load\nbegin immediate"));
+        assert!(is_txn_end("COMMIT"));
+        assert!(is_txn_end("end transaction"));
+        assert!(!is_txn_begin("CREATE TRIGGER tr AFTER INSERT ON t BEGIN SELECT 1; END"));
+        assert!(!is_txn_end("SELECT 'COMMIT'"));
+        assert!(!is_txn_end("ROLLBACK"));
     }
 
     #[test]
