@@ -110,7 +110,7 @@ pick **Querybook** and click **Always**. Each file extension is set separately.
 
 ## Keyboard shortcuts
 
-On macOS, Ctrl works wherever ⌘ is listed.
+On macOS, Ctrl works wherever ⌘ is listed. On Windows, use Ctrl for ⌘, Alt for ⌥ and Shift for ⇧. The app's own hints and menus show the Windows names.
 
 | Where | Shortcut | Action |
 |---|---|---|

@@ -25,9 +25,9 @@ Querybook/
 │   │   ├── database_service.rs    # the only place that calls the backend
 │   │   ├── database_constant.rs   # command names, SQL used by the UI, limits
 │   │   └── database_structure.rs  # plain data types
-│   └── shared/           # context menu, toasts, dialog shell, services (IPC bridge, clipboard, storage, theme)
+│   └── shared/           # context menu, toasts, dialog shell, services (IPC bridge, clipboard, storage, theme, platform)
 ├── shared/               # pure Rust shared by UI and backend: wire types, SQL builders,
-│                         # lexer, autocomplete, formatter, copy formats (all unit-tested)
+│                         # lexer, autocomplete, formatter, copy formats, shortcut labels (all unit-tested)
 ├── src-tauri/            # native backend: windows, file dialogs, SQLite/SQLCipher sessions, import/export
 ├── styles/               # global.scss (only @use lines), variables, mixins, base
 └── assets/               # vendored Bootstrap + icons, the app logo

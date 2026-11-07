@@ -9,6 +9,7 @@ use crate::database::components::cell_inspector::cell_inspector_component::CellI
 use crate::database::components::grid::grid_component::Grid;
 use crate::database::database_structure::GridSelection;
 use crate::shared::dialogs::confirmation_dialog::confirmation_dialog_component::ConfirmationDialog;
+use crate::shared::services::platform_service::PlatformService;
 
 #[allow(clippy::too_many_arguments)]
 pub fn data_grid_view(
@@ -57,7 +58,7 @@ pub fn data_grid_view(
                     <button class="btn btn-sm grid-tool" title="Insert a row" on:click=move |_| on_add_row.run(())>
                         <i class="bi bi-plus-lg"></i>" Row"
                     </button>
-                    <button class="btn btn-sm grid-tool" title="Delete the selected rows (⌫)" disabled=nothing_selected on:click=move |_| on_delete_selected.run(())>
+                    <button class="btn btn-sm grid-tool" title={PlatformService::keys("Delete the selected rows (⌫)")} disabled=nothing_selected on:click=move |_| on_delete_selected.run(())>
                         <i class="bi bi-dash-lg"></i>" Row"
                     </button>
                     <button class="btn btn-sm grid-tool" title="Set the selected cells to NULL" disabled=nothing_selected on:click=move |_| on_null_selected.run(())>

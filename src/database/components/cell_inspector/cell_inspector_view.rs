@@ -5,6 +5,7 @@
 use leptos::prelude::*;
 
 use crate::database::database_structure::InspectMode;
+use crate::shared::services::platform_service::PlatformService;
 
 const MODES: [(InspectMode, &str); 3] = [(InspectMode::Text, "Text"), (InspectMode::Json, "JSON"), (InspectMode::Hex, "Hex")];
 
@@ -107,7 +108,7 @@ pub fn cell_inspector_view(
                         </button>
                         <button
                             class="btn btn-sm btn-primary"
-                            title="Write this value to the cell (⌘↵)"
+                            title={PlatformService::keys("Write this value to the cell (⌘↵)")}
                             disabled=move || !changed.get() || mode.get() != InspectMode::Text
                             on:click=move |_| on_apply.run(())
                         >

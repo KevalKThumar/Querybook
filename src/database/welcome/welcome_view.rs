@@ -5,6 +5,7 @@
 use leptos::prelude::*;
 
 use crate::shared::common_structure::ThemeMode;
+use crate::shared::services::platform_service::PlatformService;
 
 pub fn welcome_view(
     recent: Signal<Vec<(String, String, String)>>,
@@ -39,12 +40,12 @@ pub fn welcome_view(
                     <button class="btn btn-primary welcome-action" on:click=move |_| on_open.run(false)>
                         <i class="bi bi-folder2-open"></i>
                         <span class="flex-grow-1 text-start">"Open Database…"</span>
-                        <kbd>"⌘O"</kbd>
+                        <kbd>{PlatformService::keys("⌘O")}</kbd>
                     </button>
                     <button class="btn btn-outline-secondary welcome-action" on:click=move |_| on_open.run(true)>
                         <i class="bi bi-file-earmark-plus"></i>
                         <span class="flex-grow-1 text-start">"New Database…"</span>
-                        <kbd>"⌘N"</kbd>
+                        <kbd>{PlatformService::keys("⌘N")}</kbd>
                     </button>
                 </div>
 

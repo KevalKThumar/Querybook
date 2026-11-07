@@ -1,5 +1,6 @@
 pub mod clipboard_service;
 pub mod local_storage_service;
 pub mod os_bridge;
+pub mod platform_service;
 pub mod theme_service;
 pub mod toast_service;

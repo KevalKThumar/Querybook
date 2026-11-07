@@ -6,6 +6,7 @@ All notable changes to Querybook are listed here. Versions follow [Semantic Vers
 
 ### Added
 - Windows support: builds with MSVC, an NSIS installer (per-user, no admin rights), file associations for `.db`, `.db3`, `.sqlite`, `.sqlite3` and `.sqlcipher`, and a single running instance, so a file opened from File Explorer goes to the open app.
+- Keyboard hints, tooltips and menus show Ctrl / Alt / Shift on Windows.
 
 ### Fixed
 - Windows paths show as `C:\...` (not `\\?\C:\...`) in the title, recent files and the info tab.

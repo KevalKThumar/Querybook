@@ -5,6 +5,7 @@
 use leptos::prelude::*;
 
 use crate::shared::common_structure::MenuItem;
+use crate::shared::services::platform_service::PlatformService;
 
 pub fn context_menu_view(
     placement: Signal<Option<(f64, f64)>>,
@@ -51,7 +52,7 @@ pub fn context_menu_view(
                                         }}
                                     </span>
                                     <span class="ctx-label">{label}</span>
-                                    <span class="ctx-shortcut">{shortcut}</span>
+                                    <span class="ctx-shortcut">{PlatformService::keys(shortcut)}</span>
                                 </button>
                             }
                             .into_any(),

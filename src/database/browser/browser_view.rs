@@ -15,6 +15,7 @@ use crate::database::dialogs::cipher_dialog::cipher_dialog_component::CipherDial
 use crate::database::dialogs::create_table_dialog::create_table_dialog_component::CreateTableDialog;
 use crate::database::dialogs::import_csv_dialog::import_csv_dialog_component::ImportCsvDialog;
 use crate::shared::common_structure::ThemeMode;
+use crate::shared::services::platform_service::PlatformService;
 
 #[allow(clippy::too_many_arguments)]
 pub fn browser_view(
@@ -61,17 +62,17 @@ pub fn browser_view(
         <div class="browser d-flex flex-column h-100">
             // ── Toolbar ──
             <div class="browser-toolbar d-flex align-items-center gap-1 px-2">
-                <button class="btn btn-sm browser-tool" title="Open database (⌘O)" on:click=move |_| on_open_db.run(false)>
+                <button class="btn btn-sm browser-tool" title={PlatformService::keys("Open database (⌘O)")} on:click=move |_| on_open_db.run(false)>
                     <i class="bi bi-folder2-open"></i><span>"Open"</span>
                 </button>
-                <button class="btn btn-sm browser-tool" title="New database (⌘N)" on:click=move |_| on_open_db.run(true)>
+                <button class="btn btn-sm browser-tool" title={PlatformService::keys("New database (⌘N)")} on:click=move |_| on_open_db.run(true)>
                     <i class="bi bi-file-earmark-plus"></i><span>"New"</span>
                 </button>
                 <div class="vr mx-1"></div>
                 <button class="btn btn-sm browser-tool" title="Create a table" disabled=disconnected on:click=move |_| on_new_table.run(())>
                     <i class="bi bi-table"></i><span>"New Table"</span>
                 </button>
-                <button class="btn btn-sm browser-tool" title="New SQL tab (⌘T)" disabled=disconnected on:click=move |_| new_sql_tab.run(())>
+                <button class="btn btn-sm browser-tool" title={PlatformService::keys("New SQL tab (⌘T)")} disabled=disconnected on:click=move |_| new_sql_tab.run(())>
                     <i class="bi bi-terminal"></i><span>"SQL"</span>
                 </button>
                 <div class="vr mx-1"></div>
@@ -96,7 +97,7 @@ pub fn browser_view(
                     <button class="btn btn-sm btn-outline-secondary" disabled=move || saving.get() on:click=move |_| on_revert.run(())>
                         <i class="bi bi-arrow-counterclockwise"></i>" Revert"
                     </button>
-                    <button class="btn btn-sm btn-primary" title="⌘S" disabled=move || saving.get() on:click=move |_| on_write.run(())>
+                    <button class="btn btn-sm btn-primary" title={PlatformService::keys("⌘S")} disabled=move || saving.get() on:click=move |_| on_write.run(())>
                         <i class="bi bi-check2"></i>" Write Changes"
                     </button>
                     <div class="vr mx-1"></div>
@@ -164,7 +165,7 @@ pub fn browser_view(
                                     }
                                 }
                             />
-                            <button class="icon-btn browser-tab-add" title="New SQL tab (⌘T)" on:click=move |_| new_sql_tab.run(())>
+                            <button class="icon-btn browser-tab-add" title={PlatformService::keys("New SQL tab (⌘T)")} on:click=move |_| new_sql_tab.run(())>
                                 <i class="bi bi-plus-lg"></i>
                             </button>
                         </div>

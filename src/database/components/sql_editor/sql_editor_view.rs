@@ -12,6 +12,7 @@ use crate::database::components::grid::grid_component::Grid;
 use crate::database::components::sql_code::sql_code_component::SqlCode;
 use crate::database::database_structure::GridSelection;
 use crate::database::dialogs::snippets_dialog::snippets_dialog_component::SnippetsDialog;
+use crate::shared::services::platform_service::PlatformService;
 
 fn kind_icon(kind: SuggestKind) -> &'static str {
     match kind {
@@ -66,14 +67,14 @@ pub fn sql_editor_view(
                 <button class="btn btn-sm btn-primary" title="Run everything, or the selection" disabled=move || running.get() on:click=move |_| on_run_all.run(())>
                     <i class="bi bi-play-fill"></i>" Run all"
                 </button>
-                <button class="btn btn-sm btn-outline-primary" title="Run the statement under the cursor (⇧↵ or ⌘↵)" disabled=move || running.get() on:click=move |_| on_run_current.run(())>
+                <button class="btn btn-sm btn-outline-primary" title={PlatformService::keys("Run the statement under the cursor (⇧↵ or ⌘↵)")} disabled=move || running.get() on:click=move |_| on_run_current.run(())>
                     <i class="bi bi-cursor-text"></i>" Run current"
                 </button>
                 <button class="btn btn-sm btn-outline-secondary" title="EXPLAIN QUERY PLAN for the current statement" disabled=move || running.get() on:click=move |_| on_explain.run(())>
                     <i class="bi bi-diagram-2"></i>" Explain"
                 </button>
                 <div class="vr mx-1"></div>
-                <button class="btn btn-sm btn-outline-secondary" title="Format the SQL, or the selection (⇧⌥F)" on:click=move |_| on_format.run(())>
+                <button class="btn btn-sm btn-outline-secondary" title={PlatformService::keys("Format the SQL, or the selection (⇧⌥F)")} on:click=move |_| on_format.run(())>
                     <i class="bi bi-text-indent-left"></i>" Format"
                 </button>
                 <button class="btn btn-sm btn-outline-secondary" title="Saved snippets" on:click=move |_| on_open_snippets.run(())>
@@ -105,7 +106,7 @@ pub fn sql_editor_view(
                             .collect_view()
                     }}
                 </select>
-                <span class="sqled-hint ms-auto">"⇧↵ run current · ⌃Space suggest"</span>
+                <span class="sqled-hint ms-auto">{PlatformService::keys("⇧↵ run current · ⌃Space suggest")}</span>
                 <button
                     class="btn btn-sm btn-outline-secondary"
                     class:active=move || inspector_open.get()
@@ -123,7 +124,7 @@ pub fn sql_editor_view(
                     class="sqled-layer sqled-textarea"
                     spellcheck="false"
                     autocomplete="off"
-                    placeholder="-- Write SQL here. ⇧↵ runs the statement under the cursor."
+                    placeholder={PlatformService::keys("-- Write SQL here. ⇧↵ runs the statement under the cursor.")}
                     on:input=move |ev| on_input.run(event_target_value(&ev))
                     on:keydown=move |ev| on_keydown.run(ev)
                     on:keyup=move |ev| on_keyup.run(ev)

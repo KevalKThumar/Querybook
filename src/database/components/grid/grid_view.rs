@@ -11,6 +11,7 @@ use crate::database::database_constant::{COLUMN_WIDTH, ROWNUM_WIDTH};
 use crate::database::database_structure::{GridMenu, GridSelection};
 use crate::shared::common_structure::MenuItem;
 use crate::shared::components::context_menu::context_menu_component::ContextMenu;
+use crate::shared::services::platform_service::PlatformService;
 
 fn px(v: f64) -> String {
     format!("{v}px")
@@ -79,7 +80,7 @@ pub fn grid_view(
                 // Header (+ filters) stay pinned while the body scrolls.
                 <div class="qgrid-sticky" style:width=width>
                     <div class="qgrid-head">
-                        <div class="qgrid-corner" title="Select all rows (⌘A)" on:click=move |_| on_select_all.run(())>"#"</div>
+                        <div class="qgrid-corner" title={PlatformService::keys("Select all rows (⌘A)")} on:click=move |_| on_select_all.run(())>"#"</div>
                         <For
                             each=indexed_columns
                             key=|(i, n)| (*i, n.clone())
