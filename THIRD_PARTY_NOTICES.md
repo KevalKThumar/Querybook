@@ -1,6 +1,6 @@
 # Third-party notices
 
-Querybook (the `.app` and `.dmg` releases, and this source tree) includes or links
+Querybook (the macOS `.app` / `.dmg`, the Windows installer, and this source tree) includes or links
 the components below. Each keeps its own license; this file reproduces the notices
 those licenses require.
 
@@ -41,6 +41,20 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 Part of the SQLCipher build above. SQLite is in the public domain
 (<https://www.sqlite.org/copyright.html>).
 
+## OpenSSL 3.6.3 (Windows and Linux builds)
+
+On Windows and Linux, SQLCipher's cryptography comes from OpenSSL, built from source
+and statically linked through `rusqlite`'s `bundled-sqlcipher-vendored-openssl`
+feature (`openssl-src`). macOS builds use Apple's CommonCrypto instead and contain no
+OpenSSL. <https://www.openssl.org/>
+
+OpenSSL is licensed under the Apache License, Version 2.0; the full text is in
+[LICENSE-APACHE](LICENSE-APACHE).
+
+```
+Copyright 1995-2026 The OpenSSL Project Authors. All Rights Reserved.
+```
+
 ## Bootstrap 5.3.3 and Bootstrap Icons 1.11.3
 
 Vendored in `assets/vendor/` and shipped inside the app.
@@ -78,7 +92,9 @@ The app is built from Rust crates published on crates.io, almost all under
 
 | Crate | Used for | License |
 |---|---|---|
-| tauri, tauri-build, tauri-plugin-dialog | desktop shell, windows, native dialogs | MIT OR Apache-2.0 |
+| tauri, tauri-build, tauri-plugin-dialog, tauri-plugin-single-instance | desktop shell, windows, native dialogs, one instance on Windows | MIT OR Apache-2.0 |
+| openssl-src, openssl-sys | builds and links OpenSSL (Windows, Linux) | MIT OR Apache-2.0 / MIT |
+| dunce | Windows path normalization | CC0-1.0 OR MIT-0 OR Apache-2.0 |
 | leptos, leptos_router | user interface | MIT |
 | rusqlite, libsqlite3-sys | SQLite / SQLCipher access | MIT |
 | csv | CSV import / export | Unlicense OR MIT |

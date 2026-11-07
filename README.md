@@ -5,7 +5,7 @@
 <h1 align="center">Querybook</h1>
 
 <p align="center">
-  A fast, modern SQLite and SQLCipher browser for macOS. Open as many databases as you like, each in its own window.
+  A fast, modern SQLite and SQLCipher browser for macOS and Windows. Open as many databases as you like, each in its own window.
 </p>
 
 <p align="center">
@@ -24,14 +24,14 @@ cleaner interface, and every database opens in its own window.
 
 It's built with [Tauri 2](https://tauri.app) and [Leptos](https://leptos.dev) and is
 written entirely in Rust. The UI is compiled to WebAssembly. The app makes no network
-requests: your data never leaves your Mac.
+requests: your data never leaves your computer.
 
 ## Features
 
 **Databases and windows**
 - One database per window, with as many open at once as you like. Opening a file that is already open brings its window to the front.
 - Open and create databases, with recent files on the welcome screen.
-- Opens `.db`, `.db3`, `.sqlite`, `.sqlite3` and `.sqlcipher` files from Finder (double-click or **Open With**).
+- Opens `.db`, `.db3`, `.sqlite`, `.sqlite3` and `.sqlcipher` files from Finder or File Explorer (double-click or **Open With**). On Windows, a file opened while Querybook is running goes to the running app.
 - Light, dark and system themes.
 
 **Encryption (SQLCipher 4)**
@@ -76,6 +76,8 @@ requests: your data never leaves your Mac.
 
 ## Install
 
+### macOS
+
 1. Download the latest `Querybook_x.y.z_aarch64.dmg` from **[Releases](https://github.com/KevalKThumar/Querybook/releases/latest)**. A zipped `Querybook.app` is there too.
 2. Open the `.dmg` and drag **Querybook** into **Applications**.
 3. **First launch.** Querybook is open source and not notarized by Apple, so macOS blocks it the first time. Either:
@@ -87,10 +89,24 @@ requests: your data never leaves your Mac.
 
 Requirements: a Mac with **Apple Silicon** (M1 or later). Intel Macs are not supported by the release builds yet, but you can build from source.
 
+### Windows
+
+There's no prebuilt Windows release yet. [Build the installer from source](#build-from-source),
+then run `Querybook_<version>_x64-setup.exe`. It installs for the current user (no admin
+rights needed) and registers the SQLite file types.
+
+The installer isn't code-signed, so SmartScreen may say "Windows protected your PC".
+Click **More info**, then **Run anyway**.
+
+Requirements: Windows 10 or 11 (x64). WebView2 is already part of both.
+
 ### Make Querybook the default for SQLite files
 
-In Finder, select any `.sqlite` (or `.db`) file, press **⌘I**, choose **Querybook** under
+**macOS:** in Finder, select any `.sqlite` (or `.db`) file, press **⌘I**, choose **Querybook** under
 **Open with**, then click **Change All…**. Each file extension is set separately.
+
+**Windows:** right-click a `.sqlite` (or `.db`) file, choose **Open with → Choose another app**,
+pick **Querybook** and click **Always**. Each file extension is set separately.
 
 ## Keyboard shortcuts
 
@@ -116,7 +132,19 @@ On macOS, Ctrl works wherever ⌘ is listed.
 
 ## Build from source
 
-Prerequisites: macOS with the Xcode Command Line Tools, plus:
+Prerequisites:
+
+- **macOS:** the Xcode Command Line Tools.
+- **Windows 10/11:** Visual Studio 2022 (Community or Build Tools) with the
+  **Desktop development with C++** workload, and [Strawberry Perl](https://strawberryperl.com)
+  (`winget install StrawberryPerl.StrawberryPerl`). SQLCipher uses OpenSSL on Windows, and
+  OpenSSL's build needs a native Windows Perl; the Perl bundled with Git doesn't work. Point the
+  build at Strawberry Perl once, then open a new terminal:
+  ```powershell
+  setx OPENSSL_SRC_PERL C:\Strawberry\perl\bin\perl.exe
+  ```
+
+Then, on either platform:
 
 ```sh
 # Rust (https://rustup.rs), then:
@@ -132,13 +160,23 @@ cargo tauri dev                      # hot-reloads the UI
 cargo tauri dev -- -- path/to.db     # open a database straight away
 ```
 
-Build the app and the disk image:
+On macOS, build the app and the disk image:
 
 ```sh
 cargo tauri build --bundles app,dmg
 # → target/release/bundle/macos/Querybook.app
 # → target/release/bundle/dmg/Querybook_<version>_aarch64.dmg
 ```
+
+On Windows, build the installer:
+
+```sh
+cargo tauri build
+# → target/release/bundle/nsis/Querybook_<version>_x64-setup.exe
+# → target/release/querybook.exe   (runs without installing)
+```
+
+The first Windows build compiles OpenSSL from source, which takes a few minutes.
 
 Stop any running `cargo tauri dev` before a release build. Its Trunk dev server
 rewrites `dist/`, which the release build packages.
@@ -160,7 +198,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the project layout and conventions.
 - **Adjust rows to contents** estimates text height, so very long lines can occasionally be clipped.
 - Format clears the SQL editor's undo history.
 - SQL results show at most 5,000 rows.
-- Release builds are Apple Silicon only and not notarized.
+- Published releases are Apple Silicon only and not notarized. Windows builds come from source and aren't code-signed.
 
 ## License
 
@@ -169,8 +207,8 @@ Querybook is dual-licensed under either of
 - [MIT license](LICENSE-MIT)
 - [Apache License, Version 2.0](LICENSE-APACHE)
 
-at your option. It bundles SQLCipher, SQLite, Bootstrap and Bootstrap Icons; see
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+at your option. It bundles SQLCipher, SQLite, Bootstrap and Bootstrap Icons, plus OpenSSL in
+Windows builds; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 Querybook is an independent project. It is not affiliated with DB Browser for SQLite
 or Zetetic (SQLCipher), and contains no code from DB Browser for SQLite.

@@ -34,7 +34,7 @@ fn picked_path(p: Option<FilePath>) -> Res<Option<PathBuf>> {
 /// Focus the window that has `path` open, else bind it to `caller` if that
 /// window is empty, else open a new window for it.
 fn open_in(app: &AppHandle, caller: Option<&WebviewWindow>, path: PathBuf) -> Res<OpenOutcome> {
-    let path = fs::canonicalize(&path).unwrap_or(path);
+    let path = dunce::canonicalize(&path).unwrap_or(path);
     let reg = app.state::<Registry>();
     if let Some(label) = reg.find_path(&path) {
         if let Some(w) = app.get_webview_window(&label) {
@@ -79,7 +79,7 @@ async fn open_dialog(app: AppHandle, window: WebviewWindow, create: bool) -> Res
     let Some(path) = picked_path(picked)? else { return Ok(OpenOutcome::Cancelled) };
     if create && path.exists() {
         // The save dialog already asked the user to confirm replacing it.
-        if app.state::<Registry>().find_path(&fs::canonicalize(&path).map_err(io_err)?).is_some() {
+        if app.state::<Registry>().find_path(&dunce::canonicalize(&path).map_err(io_err)?).is_some() {
             return Err(invalid("That database is open in another window. Close it first."));
         }
         for suffix in ["", "-wal", "-shm", "-journal"] {
@@ -99,15 +99,17 @@ async fn open_path(app: AppHandle, window: WebviewWindow, path: String) -> Res<O
     open_in(&app, Some(&window), path)
 }
 
-/// Files opened from Finder (double-click, Open With, drop on the Dock icon).
-/// macOS sends these as an Apple event, not argv. On a cold launch it arrives
-/// before setup has created any window, so the first file is queued for "main".
-#[cfg(target_os = "macos")]
-fn open_from_finder(app: &AppHandle, urls: &[tauri::Url]) {
+/// Files opened from outside the app while it runs: Finder on macOS (an Apple
+/// event, not argv), or on Windows a second launch (double-click in File
+/// Explorer, Open With) that the single-instance plugin forwards here.
+/// On a macOS cold launch the event arrives before setup has created any
+/// window, so the first file is queued for "main".
+#[cfg(any(target_os = "macos", windows))]
+fn open_external(app: &AppHandle, paths: Vec<PathBuf>) {
     let reg = app.state::<Registry>();
     let main = app.get_webview_window("main");
-    for path in urls.iter().filter_map(|u| u.to_file_path().ok()).filter(|p| p.is_file()) {
-        let path = fs::canonicalize(&path).unwrap_or(path);
+    for path in paths.into_iter().filter(|p| p.is_file()) {
+        let path = dunce::canonicalize(&path).unwrap_or(path);
         if main.is_none() && app.webview_windows().is_empty() && reg.get("main").is_none() {
             reg.insert("main", Session::new(Some(path)));
             continue;
@@ -119,12 +121,31 @@ fn open_from_finder(app: &AppHandle, urls: &[tauri::Url]) {
             Ok(OpenOutcome::ThisWindow) if !already_open => {
                 if let Some(w) = &main {
                     let _ = w.eval("window.location.replace('/')");
+                    let _ = w.set_focus();
                 }
             }
             Err(e) => app.dialog().message(e.message).title("Couldn't open the file").kind(MessageDialogKind::Error).show(|_| {}),
             _ => {}
         }
     }
+}
+
+/// Windows: Querybook was launched again (a file double-clicked in File
+/// Explorer, or the Start menu). Open its files here instead of in a second
+/// process, so one database is never open in two apps at once.
+#[cfg(windows)]
+fn on_second_instance(app: &AppHandle, argv: Vec<String>, cwd: String) {
+    let paths: Vec<PathBuf> = argv.iter().skip(1).map(|a| Path::new(&cwd).join(a)).filter(|p| p.is_file()).collect();
+    if paths.is_empty() {
+        if let Some(w) = app.get_webview_window("main").or_else(|| app.webview_windows().into_values().next()) {
+            let _ = w.unminimize();
+            let _ = w.set_focus();
+        }
+        return;
+    }
+    // Building a window on the event-loop thread deadlocks WebView2; open them from a task.
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move { open_external(&app, paths) });
 }
 
 #[tauri::command]
@@ -237,14 +258,18 @@ async fn export_sql_dump(app: AppHandle, window: WebviewWindow, reg: State<'_, R
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // Must be the first plugin: a second launch exits before anything else starts.
+    #[cfg(windows)]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(on_second_instance));
+    builder
         .plugin(tauri_plugin_dialog::init())
         .manage(Registry::default())
         .setup(|app| {
             let reg = app.state::<Registry>();
             // `querybook path/to.db` opens that file in the first window.
             if let Some(path) = std::env::args_os().nth(1).map(PathBuf::from).filter(|p| p.is_file()) {
-                let path = fs::canonicalize(&path).unwrap_or(path);
+                let path = dunce::canonicalize(&path).unwrap_or(path);
                 reg.insert("main", Session::new(Some(path)));
             }
             // Name "main" after its file (from argv, or a Finder open queued before setup).
@@ -299,7 +324,7 @@ pub fn run() {
         .run(|app, event| {
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Opened { urls } = event {
-                open_from_finder(app, &urls);
+                open_external(app, urls.iter().filter_map(|u| u.to_file_path().ok()).collect());
             }
             #[cfg(not(target_os = "macos"))]
             let _ = (app, event);
