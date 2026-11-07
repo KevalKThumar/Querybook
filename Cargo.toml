@@ -1,6 +1,6 @@
 [package]
 name = "querybook-ui"
-version = "1.0.0"
+version = "1.1.0"
 description = "Querybook user interface (Leptos, compiled to WebAssembly)"
 authors = ["Keval Thumar"]
 license = "MIT OR Apache-2.0"
