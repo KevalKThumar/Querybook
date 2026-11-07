@@ -50,8 +50,9 @@ fn selected_sql(textarea: NodeRef<Textarea>) -> Option<String> {
 }
 
 // Keval Thumar
-/// One SQL tab. Statements join the pending transaction if one is open,
-/// otherwise they apply immediately (like the sqlite3 shell).
+/// One SQL tab. Statements that change data or schema run inside the pending
+/// savepoint (the backend opens it), so nothing reaches the file until Write
+/// Changes (⌘S). VACUUM and PRAGMA run as they are.
 #[component]
 pub fn SqlEditor(
     in_txn: RwSignal<bool>,

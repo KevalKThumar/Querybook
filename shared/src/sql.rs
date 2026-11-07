@@ -1,6 +1,41 @@
 //! SQL text builders. Identifiers are always quoted; values always go as `?` params.
 
 use crate::Cell;
+use crate::lexer::{Tok, tokenize};
+
+// Pending changes ("Write Changes" / "Revert Changes", like DB Browser).
+// Every change runs inside this savepoint, so nothing reaches the file until
+// the user writes it. COMMIT / ROLLBACK end whatever transaction is open.
+pub const BEGIN_EDIT: &str = "SAVEPOINT querybook";
+pub const WRITE_CHANGES: &str = "COMMIT";
+pub const REVERT_CHANGES: &str = "ROLLBACK";
+
+/// True for VACUUM and PRAGMA statements. They run outside the pending
+/// savepoint: VACUUM fails inside a transaction, and pragmas such as
+/// foreign_keys and journal_mode are ignored or refused there.
+pub fn runs_outside_transaction(statement: &str) -> bool {
+    starts_with_keyword(statement, &["VACUUM", "PRAGMA"])
+}
+
+/// Tokens that aren't comments or whitespace, with the byte offset each one ends at.
+fn significant_tokens(src: &str) -> Vec<(usize, Tok, &str)> {
+    let mut end = 0;
+    let mut out = Vec::new();
+    for (t, s) in tokenize(src) {
+        end += s.len();
+        if t != Tok::Comment && !s.trim().is_empty() {
+            out.push((end, t, s));
+        }
+    }
+    out
+}
+
+/// True if the statement's first token is one of the keywords `words`.
+fn starts_with_keyword(statement: &str, words: &[&str]) -> bool {
+    significant_tokens(statement)
+        .first()
+        .is_some_and(|(_, t, s)| *t == Tok::Keyword && words.iter().any(|w| s.eq_ignore_ascii_case(w)))
+}
 
 pub fn quote_ident(s: &str) -> String {
     format!("\"{}\"", s.replace('"', "\"\""))
@@ -243,6 +278,17 @@ pub fn create_index(name: &str, table: &str, columns: &[String], unique: bool) -
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn statements_that_skip_the_pending_savepoint() {
+        assert!(runs_outside_transaction("VACUUM"));
+        assert!(runs_outside_transaction("  -- tidy up\n vacuum;"));
+        assert!(runs_outside_transaction("/* fk */ PRAGMA foreign_keys = ON"));
+        assert!(!runs_outside_transaction("UPDATE t SET pragma = 1"));
+        assert!(!runs_outside_transaction("SELECT 'VACUUM'"));
+        assert!(!runs_outside_transaction("INSERT INTO t VALUES (1)"));
+        assert!(!runs_outside_transaction(""));
+    }
 
     #[test]
     fn quoting() {

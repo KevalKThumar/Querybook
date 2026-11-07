@@ -29,11 +29,11 @@ pub const STORAGE_RECENT_FILES: &str = "querybook.recent";
 pub const MAX_RECENT_FILES: usize = 10;
 
 // Pending changes ("Write Changes" / "Revert Changes", like DB Browser).
-// Grid edits and schema dialogs open this savepoint; COMMIT / ROLLBACK end
-// whatever transaction is open, however it was started.
-pub const SQL_BEGIN_EDIT: &str = "SAVEPOINT querybook";
-pub const SQL_WRITE_CHANGES: &str = "COMMIT";
-pub const SQL_REVERT_CHANGES: &str = "ROLLBACK";
+// Grid edits and schema dialogs open this savepoint; the backend opens it for
+// SQL-editor and script statements that write. Shared with the backend.
+pub const SQL_BEGIN_EDIT: &str = shared::sql::BEGIN_EDIT;
+pub const SQL_WRITE_CHANGES: &str = shared::sql::WRITE_CHANGES;
+pub const SQL_REVERT_CHANGES: &str = shared::sql::REVERT_CHANGES;
 
 // Schema
 pub const SQL_LOAD_SCHEMA: &str = "SELECT type, name, tbl_name, COALESCE(sql, '') FROM sqlite_schema \

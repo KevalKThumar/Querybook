@@ -14,7 +14,7 @@ use rusqlite::fallible_iterator::FallibleIterator;
 use rusqlite::types::{Value, ValueRef};
 use rusqlite::{Batch, Connection, ErrorCode, InterruptHandle, Statement, params_from_iter};
 use shared::{
-    AppError, Cell, ErrorKind, ExecOutcome, FileKind, KeyInput, ResultSet, ScriptOutcome, SessionInfo,
+    AppError, Cell, ErrorKind, ExecOutcome, FileKind, KeyInput, ResultSet, ScriptOutcome, SessionInfo, sql,
 };
 
 /// Max rows one query returns to the UI.
@@ -134,6 +134,8 @@ pub fn execute(conn: &Connection, sql: &str, params: &[Cell]) -> Result<ExecOutc
 }
 
 /// Run every statement in `sql`; keep the rows of the last one that returns columns.
+/// Nothing is saved automatically: the first statement that writes opens the
+/// pending savepoint, so it waits for Write Changes like any grid edit.
 pub fn exec_script(conn: &Connection, sql: &str) -> ScriptOutcome {
     let start = Instant::now();
     let before = conn.total_changes();
@@ -142,11 +144,15 @@ pub fn exec_script(conn: &Connection, sql: &str) -> ScriptOutcome {
     loop {
         let step = batch.next().map_err(sql_err).and_then(|stmt| match stmt {
             None => Ok(false),
-            Some(mut st) if st.column_count() > 0 => {
-                out.result = Some(collect(&mut st, vec![], ROW_CAP)?);
-                Ok(true)
+            Some(mut st) => {
+                begin_pending_for(conn, &st)?;
+                if st.column_count() > 0 {
+                    out.result = Some(collect(&mut st, vec![], ROW_CAP)?);
+                    Ok(true)
+                } else {
+                    st.execute([]).map(|_| true).map_err(sql_err)
+                }
             }
-            Some(mut st) => st.execute([]).map(|_| true).map_err(sql_err),
         });
         match step {
             Ok(true) => out.statements += 1,
@@ -161,6 +167,17 @@ pub fn exec_script(conn: &Connection, sql: &str) -> ScriptOutcome {
     out.millis = start.elapsed().as_millis() as u64;
     out.in_txn = !conn.is_autocommit();
     out
+}
+
+/// Open the pending savepoint before a statement that writes, unless a
+/// transaction is already open. SQLite's own read-only flag decides: SELECT,
+/// BEGIN / COMMIT / SAVEPOINT / RELEASE and ATTACH / DETACH don't open it.
+/// VACUUM and PRAGMA run as they are (see `runs_outside_transaction`).
+fn begin_pending_for(conn: &Connection, st: &Statement) -> Result<(), AppError> {
+    if !conn.is_autocommit() || st.readonly() || st.expanded_sql().is_some_and(|s| sql::runs_outside_transaction(&s)) {
+        return Ok(());
+    }
+    conn.execute_batch(sql::BEGIN_EDIT).map_err(sql_err)
 }
 
 /// One database bound to one window.
@@ -216,6 +233,11 @@ impl Session {
     pub fn with_conn<T>(&self, f: impl FnOnce(&Connection) -> Result<T, AppError>) -> Result<T, AppError> {
         let guard = lock(&self.conn);
         f(guard.as_ref().ok_or_else(no_db)?)
+    }
+
+    /// Write the pending changes to the file (COMMIT), if there are any.
+    pub fn write_pending(&self) -> Result<(), AppError> {
+        self.with_conn(|c| if c.is_autocommit() { Ok(()) } else { c.execute_batch(sql::WRITE_CHANGES).map_err(sql_err) })
     }
 
     /// Uncommitted changes exist (a savepoint/transaction is open).
@@ -431,6 +453,41 @@ pub mod tests {
         assert!(!rs.rows.is_empty());
     }
 
+    /// SQL-editor scripts never autocommit: writes wait for Write Changes.
+    #[test]
+    fn scripts_wait_for_write_changes() {
+        let path = tmp_dir("pending").join("p.db");
+        let s = Session::new(Some(path.clone()));
+        s.connect(None).unwrap();
+        let run = |sql: &str| s.with_conn(|c| Ok(exec_script(c, sql))).unwrap();
+
+        // Reads don't open the savepoint.
+        let out = run("SELECT 1; PRAGMA user_version;");
+        assert!(out.error.is_none() && !out.in_txn && !s.has_pending());
+
+        // Writes do, and another connection can't see them yet.
+        let out = run("CREATE TABLE t(x); INSERT INTO t VALUES (1);");
+        assert!(out.error.is_none() && out.in_txn && s.has_pending());
+        let other = open_conn(&path, None).unwrap();
+        let tables = |c: &Connection| c.query_row("SELECT count(*) FROM sqlite_master WHERE name = 't'", [], |r| r.get::<_, i64>(0)).unwrap();
+        assert_eq!(tables(&other), 0);
+
+        // VACUUM can't join the pending changes; SQLite refuses instead of committing them.
+        let out = run("VACUUM");
+        assert!(out.error.is_some() && s.has_pending());
+
+        // Write Changes (Ctrl+S, or Save in the close prompt).
+        s.write_pending().unwrap();
+        assert!(!s.has_pending());
+        assert_eq!(tables(&other), 1);
+        assert_eq!(count(&other), 1);
+
+        // With nothing pending, VACUUM runs directly and writing is a no-op.
+        let out = run("VACUUM");
+        assert!(out.error.is_none() && !out.in_txn);
+        s.write_pending().unwrap();
+    }
+
     #[test]
     fn gateway_keeps_big_integers_and_reports_script_errors() {
         let conn = Connection::open_in_memory().unwrap();
@@ -440,6 +497,9 @@ pub mod tests {
         assert!(out.error.as_deref().unwrap().starts_with("Statement 4:"));
         let rs = out.result.unwrap();
         assert_eq!(rs.rows[0][0], Cell::Int("9007199254740993".into()));
+        // The script's writes wait in the pending savepoint; write them.
+        assert!(out.in_txn);
+        conn.execute_batch(sql::WRITE_CHANGES).unwrap();
 
         let key = rs.rows[0][0].clone();
         let done = execute(&conn, "UPDATE t SET v = ? WHERE _rowid_ = ?", &[Cell::Text("b".into()), key]).unwrap();

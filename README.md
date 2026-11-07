@@ -43,7 +43,7 @@ requests: your data never leaves your computer.
 - Virtual-scrolling grid that stays smooth on tables with hundreds of thousands of rows.
 - Sort by any column and filter per column. Plain text matches "contains"; you can also use `=`, `<>`, `>`, `<`, `>=` and `<=`.
 - Edit cells inline, set NULL, insert, duplicate and delete rows.
-- **Write Changes / Revert Changes**: every edit is held in a savepoint until you write it (⌘S) or revert it. Closing a window with unwritten changes asks first.
+- **Write Changes / Revert Changes**: nothing is saved automatically. Every change (grid edits, schema changes, imports, and statements you run in the SQL editor or from a `.sql` script) is held in a savepoint until you write it (⌘S, or Ctrl+S on Windows) or revert it. Closing a window with unwritten changes asks whether to **Save**, **Don't Save** or **Cancel**.
 - Select single cells, cell ranges or whole rows (via the row numbers), as in a spreadsheet.
 - Copy, Copy with headers, or Copy as SQL `INSERT` statements.
 - Resize columns by dragging a header edge; double-click the edge to fit the contents.

@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use db::{Registry, Session, invalid, io_err};
 use shared::{AppError, Cell, CsvPreview, ExecOutcome, KeyInput, OpenOutcome, ResultSet, ScriptOutcome, SessionInfo};
 use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
-use tauri_plugin_dialog::{DialogExt, FilePath, MessageDialogButtons, MessageDialogKind};
+use tauri_plugin_dialog::{DialogExt, FilePath, MessageDialogButtons, MessageDialogKind, MessageDialogResult};
 
 type Res<T> = Result<T, AppError>;
 
@@ -148,6 +148,42 @@ fn on_second_instance(app: &AppHandle, argv: Vec<String>, cwd: String) {
     tauri::async_runtime::spawn(async move { open_external(&app, paths) });
 }
 
+const SAVE: &str = "Save";
+const DONT_SAVE: &str = "Don't Save";
+
+/// Closing a window with unwritten changes: ask Save / Don't Save / Cancel.
+/// Nothing is ever saved without the user choosing to.
+fn confirm_close(window: &tauri::Window, session: std::sync::Arc<Session>) {
+    let name = session.path.as_deref().map_or_else(|| "this database".to_string(), title_for);
+    let w = window.clone();
+    window
+        .dialog()
+        .message(format!("Do you want to save the changes you made to {name}?\n\nIf you don't save, your changes will be lost."))
+        .title("Unsaved changes")
+        .kind(MessageDialogKind::Warning)
+        .buttons(MessageDialogButtons::YesNoCancelCustom(SAVE.into(), DONT_SAVE.into(), "Cancel".into()))
+        .parent(window)
+        .show_with_result(move |choice| match choice {
+            MessageDialogResult::Custom(c) if c == SAVE => match session.write_pending() {
+                Ok(()) => {
+                    let _ = w.destroy();
+                }
+                Err(e) => {
+                    w.dialog()
+                        .message(format!("{}\n\nThe window stays open and your changes are still pending.", e.message))
+                        .title("Couldn't save the changes")
+                        .kind(MessageDialogKind::Error)
+                        .parent(&w)
+                        .show(|_| {});
+                }
+            },
+            MessageDialogResult::Custom(c) if c == DONT_SAVE => {
+                let _ = w.destroy();
+            }
+            _ => {}
+        });
+}
+
 #[tauri::command]
 async fn connect(window: WebviewWindow, reg: State<'_, Registry>, key: Option<KeyInput>) -> Res<SessionInfo> {
     let s = reg.session(window.label())?;
@@ -280,22 +316,9 @@ pub fn run() {
         })
         .on_window_event(|window, event| match event {
             WindowEvent::CloseRequested { api, .. } => {
-                let pending = window.state::<Registry>().get(window.label()).is_some_and(|s| s.has_pending());
-                if pending {
+                if let Some(session) = window.state::<Registry>().get(window.label()).filter(|s| s.has_pending()) {
                     api.prevent_close();
-                    let w = window.clone();
-                    window
-                        .dialog()
-                        .message("This database has changes that were not written. Close the window and discard them?")
-                        .title("Unsaved changes")
-                        .kind(MessageDialogKind::Warning)
-                        .buttons(MessageDialogButtons::OkCancelCustom("Discard".into(), "Cancel".into()))
-                        .parent(window)
-                        .show(move |discard| {
-                            if discard {
-                                let _ = w.destroy();
-                            }
-                        });
+                    confirm_close(window, session);
                 }
             }
             // Dropping the session closes the connection (rolling back anything unwritten).
