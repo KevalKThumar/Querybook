@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 pub mod complete;
 pub mod copy;
 pub mod format;
+pub mod history;
 pub mod keys;
 pub mod lexer;
 pub mod sql;

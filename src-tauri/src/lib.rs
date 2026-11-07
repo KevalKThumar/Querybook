@@ -2,6 +2,7 @@
 //! and the file dialogs. All SQL text is built by the UI (`shared::sql`).
 
 mod db;
+mod history;
 mod io;
 
 use std::fs;
@@ -10,6 +11,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use db::{Registry, Session, invalid, io_err};
+use shared::history::HistoryPage;
 use shared::{
     AppError, Cell, CsvPreview, ExecOutcome, KeyInput, OpenOutcome, ResultSet, ScriptOutcome, SessionInfo,
     SqlExportOptions,
@@ -31,6 +33,13 @@ fn title_for(path: &Path) -> String {
     path.file_name().map_or("Querybook".into(), |n| n.to_string_lossy().into_owned())
 }
 
+/// A session for `path` that keeps its change history in the app data folder
+/// (`%APPDATA%\com.kevalthumar.querybook\history` on Windows,
+/// `~/Library/Application Support/com.kevalthumar.querybook/history` on macOS).
+fn new_session(app: &AppHandle, path: PathBuf) -> Session {
+    Session::new(Some(path)).with_history(app.path().app_data_dir().ok().map(|d| d.join("history")))
+}
+
 fn picked_path(p: Option<FilePath>) -> Res<Option<PathBuf>> {
     p.map(|p| p.into_path().map_err(io_err)).transpose()
 }
@@ -50,12 +59,12 @@ fn open_in(app: &AppHandle, caller: Option<&WebviewWindow>, path: PathBuf) -> Re
     }
     let title = title_for(&path);
     if let Some(caller) = caller.filter(|c| reg.get(c.label()).is_none_or(|s| s.path.is_none())) {
-        reg.insert(caller.label(), Session::new(Some(path)));
+        reg.insert(caller.label(), new_session(app, path));
         let _ = caller.set_title(&title);
         return Ok(OpenOutcome::ThisWindow);
     }
     let label = format!("db-{}", NEXT_WINDOW.fetch_add(1, Ordering::Relaxed));
-    reg.insert(&label, Session::new(Some(path)));
+    reg.insert(&label, new_session(app, path));
     WebviewWindowBuilder::new(app, &label, WebviewUrl::App("index.html".into()))
         .title(title)
         .inner_size(1280.0, 820.0)
@@ -115,7 +124,7 @@ fn open_external(app: &AppHandle, paths: Vec<PathBuf>) {
     for path in paths.into_iter().filter(|p| p.is_file()) {
         let path = dunce::canonicalize(&path).unwrap_or(path);
         if main.is_none() && app.webview_windows().is_empty() && reg.get("main").is_none() {
-            reg.insert("main", Session::new(Some(path)));
+            reg.insert("main", new_session(app, path));
             continue;
         }
         let already_open = reg.find_path(&path).is_some();
@@ -203,13 +212,33 @@ async fn query(window: WebviewWindow, reg: State<'_, Registry>, sql: String, par
 #[tauri::command]
 async fn execute(window: WebviewWindow, reg: State<'_, Registry>, sql: String, params: Vec<Cell>) -> Res<ExecOutcome> {
     let s = reg.session(window.label())?;
-    blocking(move || s.with_conn(|c| db::execute(c, &sql, &params))).await
+    blocking(move || s.execute(&sql, &params)).await
 }
 
 #[tauri::command]
 async fn exec_script(window: WebviewWindow, reg: State<'_, Registry>, sql: String) -> Res<ScriptOutcome> {
     let s = reg.session(window.label())?;
-    blocking(move || s.with_conn(|c| Ok(db::exec_script(c, &sql)))).await
+    blocking(move || s.exec_script(&sql)).await
+}
+
+/// Write Changes / Ctrl+S: commit the pending changes and record the save.
+#[tauri::command]
+async fn write_changes(window: WebviewWindow, reg: State<'_, Registry>) -> Res<()> {
+    let s = reg.session(window.label())?;
+    blocking(move || s.write_pending()).await
+}
+
+/// The latest `limit` saves of this window's database, newest first.
+#[tauri::command]
+async fn change_history(window: WebviewWindow, reg: State<'_, Registry>, limit: u32) -> Res<HistoryPage> {
+    let s = reg.session(window.label())?;
+    blocking(move || s.change_history(limit)).await
+}
+
+#[tauri::command]
+async fn clear_change_history(window: WebviewWindow, reg: State<'_, Registry>) -> Res<()> {
+    let s = reg.session(window.label())?;
+    blocking(move || s.clear_change_history()).await
 }
 
 #[tauri::command]
@@ -263,7 +292,7 @@ async fn import_csv(
 async fn import_sql(window: WebviewWindow, reg: State<'_, Registry>, path: String) -> Res<ScriptOutcome> {
     let s = reg.session(window.label())?;
     let sql = fs::read_to_string(path).map_err(io_err)?;
-    blocking(move || s.with_conn(|c| Ok(db::exec_import(c, &sql)))).await
+    blocking(move || s.exec_import(&sql)).await
 }
 
 fn save_path(app: &AppHandle, window: &WebviewWindow, file_name: &str, filter: (&str, &[&str])) -> Res<Option<PathBuf>> {
@@ -333,7 +362,7 @@ pub fn run() {
             // `querybook path/to.db` opens that file in the first window.
             if let Some(path) = std::env::args_os().nth(1).map(PathBuf::from).filter(|p| p.is_file()) {
                 let path = dunce::canonicalize(&path).unwrap_or(path);
-                reg.insert("main", Session::new(Some(path)));
+                reg.insert("main", new_session(app.handle(), path));
             }
             // Name "main" after its file (from argv, or a Finder open queued before setup).
             if let (Some(w), Some(path)) = (app.get_webview_window("main"), reg.get("main").and_then(|s| s.path.clone())) {
@@ -360,6 +389,9 @@ pub fn run() {
             query,
             execute,
             exec_script,
+            write_changes,
+            change_history,
+            clear_change_history,
             cancel,
             set_encryption,
             pick_import_file,

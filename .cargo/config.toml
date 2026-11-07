@@ -1,0 +1,6 @@
+# Compile options for the SQLCipher (SQLite) that libsqlite3-sys bundles.
+# The change history reads each row's old values with the preupdate hook,
+# which SQLite only builds in with this flag. (rusqlite's own `preupdate_hook`
+# feature would also do it, but it needs bindgen and libclang at build time.)
+[env]
+LIBSQLITE3_FLAGS = "-DSQLITE_ENABLE_PREUPDATE_HOOK"

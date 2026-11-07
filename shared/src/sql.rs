@@ -27,6 +27,11 @@ pub fn is_txn_end(statement: &str) -> bool {
     starts_with_keyword(statement, &["COMMIT", "END"])
 }
 
+/// `COMMIT`, `END` or `RELEASE`: statements that can write the open transaction to the file.
+pub fn may_end_txn(statement: &str) -> bool {
+    starts_with_keyword(statement, &["COMMIT", "END", "RELEASE"])
+}
+
 /// Tokens that aren't comments or whitespace, with the byte offset each one ends at.
 fn significant_tokens(src: &str) -> Vec<(usize, Tok, &str)> {
     let mut end = 0;
@@ -354,6 +359,8 @@ mod tests {
         assert!(!is_txn_begin("CREATE TRIGGER tr AFTER INSERT ON t BEGIN SELECT 1; END"));
         assert!(!is_txn_end("SELECT 'COMMIT'"));
         assert!(!is_txn_end("ROLLBACK"));
+        assert!(may_end_txn("COMMIT") && may_end_txn("end") && may_end_txn("RELEASE SAVEPOINT querybook"));
+        assert!(!may_end_txn("ROLLBACK") && !may_end_txn("ROLLBACK TO querybook") && !may_end_txn("UPDATE t SET x = 1"));
     }
 
     #[test]

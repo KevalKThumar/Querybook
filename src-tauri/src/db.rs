@@ -13,9 +13,12 @@ use std::time::{Duration, Instant};
 use rusqlite::fallible_iterator::FallibleIterator;
 use rusqlite::types::{Value, ValueRef};
 use rusqlite::{Batch, Connection, ErrorCode, InterruptHandle, Statement, params_from_iter};
+use shared::history::HistoryPage;
 use shared::{
     AppError, Cell, ErrorKind, ExecOutcome, FileKind, KeyInput, ResultSet, ScriptOutcome, SessionInfo, sql,
 };
+
+use crate::history::{Journal, Store};
 
 /// Max rows one query returns to the UI.
 // ponytail: fixed cap; the grid pages with LIMIT/OFFSET so only the SQL editor hits it.
@@ -133,21 +136,22 @@ pub fn execute(conn: &Connection, sql: &str, params: &[Cell]) -> Result<ExecOutc
     Ok(ExecOutcome { affected, in_txn: !conn.is_autocommit() })
 }
 
-/// Run every statement in `sql`; keep the rows of the last one that returns columns.
-/// Nothing is saved automatically: the first statement that writes opens the
-/// pending savepoint, so it waits for Write Changes like any grid edit.
+/// [`Session::exec_script`] on a bare connection, without the change history.
+#[cfg(test)]
 pub fn exec_script(conn: &Connection, sql: &str) -> ScriptOutcome {
-    run_script(conn, sql, false)
+    run_script(conn, sql, false, None)
 }
 
-/// Run a `.sql` file (Import SQL). The script's own `BEGIN … COMMIT` joins the
-/// pending changes: BEGIN opens the savepoint and COMMIT / END leave it open,
-/// so nothing reaches the file until the user writes the changes.
+/// [`Session::exec_import`] on a bare connection, without the change history.
+#[cfg(test)]
 pub fn exec_import(conn: &Connection, sql: &str) -> ScriptOutcome {
-    run_script(conn, sql, true)
+    run_script(conn, sql, true, None)
 }
 
-fn run_script(conn: &Connection, sql: &str, import: bool) -> ScriptOutcome {
+/// Run every statement in `sql`; keep the rows of the last one that returns columns.
+/// `import`: the script's own BEGIN / COMMIT join the pending changes (Import SQL).
+/// `journal` records what each statement changes, for the change history.
+fn run_script(conn: &Connection, sql: &str, import: bool, journal: Option<&Journal>) -> ScriptOutcome {
     let start = Instant::now();
     let before = conn.total_changes();
     let mut out = ScriptOutcome::default();
@@ -156,25 +160,29 @@ fn run_script(conn: &Connection, sql: &str, import: bool) -> ScriptOutcome {
         let step = batch.next().map_err(sql_err).and_then(|stmt| match stmt {
             None => Ok(false),
             Some(mut st) => {
+                let text = st.expanded_sql().unwrap_or_default();
                 if import {
-                    let text = st.expanded_sql().unwrap_or_default();
                     if sql::is_txn_end(&text) {
                         return Ok(true);
                     }
                     if sql::is_txn_begin(&text) {
                         if conn.is_autocommit() {
-                            conn.execute_batch(sql::BEGIN_EDIT).map_err(sql_err)?;
+                            begin_edit(conn, journal)?;
                         }
                         return Ok(true);
                     }
                 }
-                begin_pending_for(conn, &st)?;
-                if st.column_count() > 0 {
-                    out.result = Some(collect(&mut st, vec![], ROW_CAP)?);
-                    Ok(true)
+                begin_pending_for(conn, &st, journal)?;
+                let tracked = journal.map(|j| j.before(conn, &text));
+                let ran = if st.column_count() > 0 {
+                    collect(&mut st, vec![], ROW_CAP).map(|rs| out.result = Some(rs))
                 } else {
-                    st.execute([]).map(|_| true).map_err(sql_err)
+                    st.execute([]).map(|_| ()).map_err(sql_err)
+                };
+                if let (Some(j), Some(b)) = (journal, tracked) {
+                    j.after(conn, b, ran.is_ok());
                 }
+                ran.map(|_| true)
             }
         });
         match step {
@@ -196,27 +204,69 @@ fn run_script(conn: &Connection, sql: &str, import: bool) -> ScriptOutcome {
 /// transaction is already open. SQLite's own read-only flag decides: SELECT,
 /// BEGIN / COMMIT / SAVEPOINT / RELEASE and ATTACH / DETACH don't open it.
 /// VACUUM and PRAGMA run as they are (see `runs_outside_transaction`).
-fn begin_pending_for(conn: &Connection, st: &Statement) -> Result<(), AppError> {
+fn begin_pending_for(conn: &Connection, st: &Statement, journal: Option<&Journal>) -> Result<(), AppError> {
     if !conn.is_autocommit() || st.readonly() || st.expanded_sql().is_some_and(|s| sql::runs_outside_transaction(&s)) {
         return Ok(());
     }
-    conn.execute_batch(sql::BEGIN_EDIT).map_err(sql_err)
+    begin_edit(conn, journal)
+}
+
+/// Open the pending savepoint, and start recording before anything is written.
+fn begin_edit(conn: &Connection, journal: Option<&Journal>) -> Result<(), AppError> {
+    conn.execute_batch(sql::BEGIN_EDIT).map_err(sql_err)?;
+    if let Some(j) = journal {
+        j.start(conn);
+    }
+    Ok(())
+}
+
+/// Copy the main database of `conn` into a new file at `target`, encrypted
+/// with `key` (plain when None). Keeps `user_version`, which
+/// `sqlcipher_export` doesn't carry over.
+pub fn export_copy(conn: &Connection, target: &Path, key: Option<&KeyInput>) -> Result<(), AppError> {
+    let key_value = key.map(KeyInput::pragma_value).unwrap_or_default();
+    conn.execute("ATTACH DATABASE ?1 AS qb_target KEY ?2", (target.to_string_lossy(), key_value)).map_err(sql_err)?;
+    let copied = conn.query_row("SELECT sqlcipher_export('qb_target')", [], |_| Ok(())).and_then(|_| {
+        let v: i64 = conn.query_row("PRAGMA main.user_version", [], |r| r.get(0))?;
+        conn.execute_batch(&format!("PRAGMA qb_target.user_version = {v}"))
+    });
+    conn.execute_batch("DETACH DATABASE qb_target").map_err(sql_err)?;
+    copied.map_err(sql_err)
 }
 
 /// One database bound to one window.
 pub struct Session {
     /// None for an empty (welcome) window.
     pub path: Option<PathBuf>,
+    /// Declared before `journal`: its preupdate hook points into the journal,
+    /// so the connection must be dropped first.
     conn: Mutex<Option<Connection>>,
     /// Kept outside `conn` so cancel works while a running query holds that lock.
     interrupt: Mutex<Option<InterruptHandle>>,
     /// Current key; needed to reopen the original if an encryption change fails.
     key: Mutex<Option<KeyInput>>,
+    /// What the pending changes did, for the change history.
+    journal: Journal,
+    /// Where this database's saves are kept (None: not recorded).
+    history: Option<Store>,
 }
 
 impl Session {
     pub fn new(path: Option<PathBuf>) -> Self {
-        Self { path, conn: Mutex::new(None), interrupt: Mutex::new(None), key: Mutex::new(None) }
+        Self {
+            path,
+            conn: Mutex::new(None),
+            interrupt: Mutex::new(None),
+            key: Mutex::new(None),
+            journal: Journal::default(),
+            history: None,
+        }
+    }
+
+    /// Keep the change history of this database in `dir`.
+    pub fn with_history(mut self, dir: Option<PathBuf>) -> Self {
+        self.history = dir.zip(self.path.as_deref()).map(|(dir, path)| Store::new(dir, path));
+        self
     }
 
     pub fn info(&self) -> SessionInfo {
@@ -236,6 +286,10 @@ impl Session {
     }
 
     fn install(&self, conn: Connection, key: Option<KeyInput>, slot: &mut Option<Connection>) {
+        self.journal.attach(&conn);
+        if let Some(h) = &self.history {
+            h.forget();
+        }
         *lock(&self.interrupt) = Some(conn.get_interrupt_handle());
         *lock(&self.key) = key;
         *slot = Some(conn);
@@ -258,9 +312,78 @@ impl Session {
         f(guard.as_ref().ok_or_else(no_db)?)
     }
 
-    /// Write the pending changes to the file (COMMIT), if there are any.
+    /// One statement from the UI (grid edits, schema changes, Write / Revert).
+    pub fn execute(&self, sql: &str, params: &[Cell]) -> Result<ExecOutcome, AppError> {
+        let out = self.with_conn(|c| {
+            let before = self.journal.before(c, sql);
+            let out = execute(c, sql, params);
+            self.journal.after(c, before, out.is_ok());
+            out
+        });
+        self.store_saves();
+        out
+    }
+
+    /// Run a script from the SQL editor. Nothing is saved automatically: the
+    /// first statement that writes opens the pending savepoint, so it waits for
+    /// Write Changes like any grid edit. A COMMIT typed in the script is a save.
+    pub fn exec_script(&self, sql: &str) -> Result<ScriptOutcome, AppError> {
+        let out = self.with_conn(|c| Ok(run_script(c, sql, false, Some(&self.journal))));
+        self.store_saves();
+        out
+    }
+
+    /// Run a `.sql` file (Import SQL). The script's own `BEGIN … COMMIT` joins
+    /// the pending changes: BEGIN opens the savepoint and COMMIT / END leave it
+    /// open, so nothing reaches the file until the user writes the changes.
+    pub fn exec_import(&self, sql: &str) -> Result<ScriptOutcome, AppError> {
+        let out = self.with_conn(|c| Ok(run_script(c, sql, true, Some(&self.journal))));
+        self.store_saves();
+        out
+    }
+
+    /// Write the pending changes to the file (COMMIT), if there are any:
+    /// Write Changes, Ctrl+S, or Save when closing.
     pub fn write_pending(&self) -> Result<(), AppError> {
-        self.with_conn(|c| if c.is_autocommit() { Ok(()) } else { c.execute_batch(sql::WRITE_CHANGES).map_err(sql_err) })
+        let out = self.with_conn(|c| {
+            if c.is_autocommit() {
+                return Ok(());
+            }
+            let before = self.journal.before(c, sql::WRITE_CHANGES);
+            let out = c.execute_batch(sql::WRITE_CHANGES).map_err(sql_err);
+            self.journal.after(c, before, out.is_ok());
+            out
+        });
+        self.store_saves();
+        out
+    }
+
+    /// Keep the saves the journal recorded. A failure is logged, never fatal:
+    /// the changes are already in the file.
+    fn store_saves(&self) {
+        let saves = self.journal.take_finished();
+        let Some(store) = self.history.as_ref().filter(|_| !saves.is_empty()) else { return };
+        let key = lock(&self.key).clone();
+        for entry in &saves {
+            if let Err(e) = store.append(key.as_ref(), entry) {
+                eprintln!("history: couldn't keep a save: {}", e.message);
+            }
+        }
+    }
+
+    /// The latest `limit` saves of this database, newest first.
+    pub fn change_history(&self, limit: u32) -> Result<HistoryPage, AppError> {
+        match &self.history {
+            Some(store) => store.recent(lock(&self.key).as_ref(), limit),
+            None => Ok(HistoryPage::default()),
+        }
+    }
+
+    pub fn clear_change_history(&self) -> Result<(), AppError> {
+        match &self.history {
+            Some(store) => store.clear(lock(&self.key).as_ref()),
+            None => Ok(()),
+        }
     }
 
     /// Uncommitted changes exist (a savepoint/transaction is open).
@@ -292,18 +415,7 @@ impl Session {
         let _ = fs::remove_file(&tmp);
 
         let export = || -> Result<(), AppError> {
-            let key_value = key.as_ref().map(KeyInput::pragma_value).unwrap_or_default();
-            conn.execute("ATTACH DATABASE ?1 AS qb_target KEY ?2", (tmp.to_string_lossy(), key_value))
-                .map_err(sql_err)?;
-            let copied = conn
-                .query_row("SELECT sqlcipher_export('qb_target')", [], |_| Ok(()))
-                .and_then(|_| {
-                    // sqlcipher_export doesn't carry header fields like user_version.
-                    let v: i64 = conn.query_row("PRAGMA main.user_version", [], |r| r.get(0))?;
-                    conn.execute_batch(&format!("PRAGMA qb_target.user_version = {v}"))
-                });
-            conn.execute_batch("DETACH DATABASE qb_target").map_err(sql_err)?;
-            copied.map_err(sql_err)?;
+            export_copy(conn, &tmp, key.as_ref())?;
             // Prove the copy opens with the new key before touching the original.
             let check = open_conn(&tmp, key.as_ref())?;
             let status: String = check.query_row("PRAGMA integrity_check", [], |r| r.get(0)).map_err(sql_err)?;
@@ -339,8 +451,12 @@ impl Session {
             return reopen_original(&mut guard, io_err(e));
         }
         let conn = open_conn(&path, key.as_ref())?;
-        self.install(conn, key, &mut guard);
+        self.install(conn, key.clone(), &mut guard);
         drop(guard);
+        // The history is readable with exactly the database's key.
+        if let Some(h) = &self.history {
+            h.rekey(old_key.as_ref(), key.as_ref());
+        }
         Ok(self.info())
     }
 }
