@@ -7,7 +7,7 @@ use std::ops::Range;
 
 use serde::Serialize;
 use shared::sql::RowKey;
-use shared::{Cell, KeyInput};
+use shared::{Cell, KeyInput, SqlExportOptions};
 
 /// Stateless Tauri-command layer for the module (impl in `database_service.rs`).
 #[derive(Clone, Copy)]
@@ -51,6 +51,13 @@ impl SchemaObject {
             _ => "bi bi-lightning-charge",
         }
     }
+}
+
+/// A table or view the SQL export offers.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ExportItem {
+    pub name: String,
+    pub is_view: bool,
 }
 
 /// One row of `pragma_table_xinfo`.
@@ -297,4 +304,10 @@ pub struct ImportCsvRequest<'a> {
 pub struct ExportCsvRequest<'a> {
     pub sql: &'a str,
     pub name: &'a str,
+}
+
+#[derive(Serialize)]
+pub struct ExportSqlRequest<'a> {
+    pub tables: &'a [String],
+    pub options: &'a SqlExportOptions,
 }

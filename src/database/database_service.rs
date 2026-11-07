@@ -11,17 +11,21 @@ use leptos::logging::*;
 use leptos::prelude::*;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-use shared::{AppError, Cell, CsvPreview, ExecOutcome, KeyInput, OpenOutcome, ResultSet, ScriptOutcome, SessionInfo};
+use shared::{
+    AppError, Cell, CsvPreview, ExecOutcome, KeyInput, OpenOutcome, ResultSet, ScriptOutcome, SessionInfo,
+    SqlExportOptions, sql,
+};
 
 use crate::database::database_constant::{
-    CMD_CANCEL, CMD_CONNECT, CMD_CSV_PREVIEW, CMD_EXECUTE, CMD_EXEC_SCRIPT, CMD_EXPORT_CSV, CMD_EXPORT_SQL_DUMP,
+    CMD_CANCEL, CMD_CONNECT, CMD_CSV_PREVIEW, CMD_EXECUTE, CMD_EXEC_SCRIPT, CMD_EXPORT_CSV, CMD_EXPORT_SQL,
     CMD_IMPORT_CSV, CMD_IMPORT_SQL, CMD_OPEN_DIALOG, CMD_OPEN_PATH, CMD_PICK_IMPORT_FILE, CMD_QUERY,
     CMD_SESSION_INFO, CMD_SET_ENCRYPTION, HISTORY_SEPARATOR, MAX_HISTORY, MAX_RECENT_FILES, SNIPPET_NAME_SEPARATOR,
     SQL_BEGIN_EDIT, SQL_FOREIGN_KEYS, SQL_LOAD_SCHEMA, SQL_REVERT_CHANGES, SQL_TABLE_COLUMNS, SQL_WRITE_CHANGES,
     STORAGE_HISTORY_PREFIX, STORAGE_RECENT_FILES, STORAGE_SNIPPETS,
 };
 use crate::database::database_structure::{
-    ColumnInfo, CsvPreviewRequest, DatabaseService, ExportCsvRequest, ForeignKey, ImportCsvRequest, KeyRequest,
+    ColumnInfo, CsvPreviewRequest, DatabaseService, ExportCsvRequest, ExportItem, ExportSqlRequest, ForeignKey,
+    ImportCsvRequest, KeyRequest,
     OpenDialogRequest, PathRequest, PickFileRequest, SchemaObject, ScriptRequest, SqlRequest,
 };
 use crate::shared::services::local_storage_service::LocalStorageService;
@@ -121,6 +125,13 @@ impl DatabaseService {
     }
 
     // Keval Thumar
+    // Tables and views the SQL export offers (FTS shadow tables left out), by name.
+    pub async fn load_exportable(toast: ToastService) -> Vec<ExportItem> {
+        let Some(rs) = Self::query(sql::EXPORTABLE_OBJECTS, &[], toast).await else { return vec![] };
+        rs.rows.iter().map(|r| ExportItem { name: text(&r[0]), is_view: text(&r[1]) == "view" }).collect()
+    }
+
+    // Keval Thumar
     // Columns of a table or view, in declaration order.
     pub async fn load_columns(table: &str, toast: ToastService) -> Vec<ColumnInfo> {
         let params = [Cell::Text(table.to_string())];
@@ -198,9 +209,17 @@ impl DatabaseService {
         }
     }
 
-    pub async fn export_sql_dump(toast: ToastService) {
-        if let Some(Some(path)) = Self::call::<_, Option<String>>(CMD_EXPORT_SQL_DUMP, &NoArgs {}, toast).await {
-            toast.success(&format!("SQL dump saved to {path}"));
+    // Keval Thumar
+    // Export the ticked tables and views as one SQL script the user saves.
+    // False when the save was cancelled or failed (the dialog stays open).
+    pub async fn export_sql(tables: &[String], options: &SqlExportOptions, toast: ToastService) -> bool {
+        let request = ExportSqlRequest { tables, options };
+        match Self::call::<_, Option<String>>(CMD_EXPORT_SQL, &request, toast).await {
+            Some(Some(path)) => {
+                toast.success(&format!("SQL saved to {path}"));
+                true
+            }
+            _ => false,
         }
     }
 

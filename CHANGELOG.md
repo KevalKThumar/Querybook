@@ -9,8 +9,10 @@ First release for Windows, alongside macOS.
 ### Added
 - Windows support: builds with MSVC, an NSIS installer (per-user, no admin rights), file associations for `.db`, `.db3`, `.sqlite`, `.sqlite3` and `.sqlcipher`, and a single running instance, so a file opened from File Explorer goes to the open app.
 - Keyboard hints, tooltips and menus show Ctrl / Alt / Shift on Windows.
+- Export SQL dialog: tick the tables and views to export, all of them, or just the table you're browsing (the new **SQL** button on the Browse tab). The script can drop each table and create it again (or keep it with `CREATE … IF NOT EXISTS`), then insert its current rows. Options: schema and data, schema only or data only (optionally deleting the existing rows first); indexes and triggers; column names in INSERT; several rows per INSERT; a wrapping transaction. Exporting from an encrypted database shows a note that the SQL file is plain text.
 
 ### Changed
+- **Export SQL** opens the export dialog instead of writing a dump of the whole database straight away. Everything is ticked by default, so a full dump is one more click.
 - Import SQL no longer writes on its own: a script's `BEGIN … COMMIT` joins the pending changes until you write them.
 - Nothing is saved automatically. Statements run in the SQL editor or from a `.sql` script now join the pending changes too, so only Write Changes (⌘S / Ctrl+S) writes them. VACUUM and PRAGMA still run directly.
 - Closing a window with unwritten changes now asks **Save**, **Don't Save** or **Cancel** (before, the only choices were Discard and Cancel).

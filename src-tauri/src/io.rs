@@ -1,14 +1,18 @@
 //! CSV / SQL import and export. Pure functions over a connection + file path;
 //! the file dialogs live in the Tauri commands.
 
+use std::collections::HashSet;
 use std::fs::File;
-use std::io::{BufWriter, Write};
+use std::io::Write;
 use std::path::Path;
 
 use rusqlite::types::ValueRef;
-use rusqlite::{Connection, params_from_iter};
-use shared::sql::{blob_literal, quote_ident, quote_str};
-use shared::{AppError, CsvPreview, ExecOutcome};
+use rusqlite::{Connection, OptionalExtension, params_from_iter};
+use shared::sql::{
+    EXPORTABLE_OBJECTS, ROWS_PER_INSERT, blob_literal, create_if_not_exists, drop_if_exists, quote_ident, quote_str,
+    terminate,
+};
+use shared::{AppError, CsvPreview, ExecOutcome, SqlExportOptions};
 
 use crate::db::{invalid, io_err, sql_err};
 
@@ -140,53 +144,145 @@ pub fn sql_literal(v: ValueRef<'_>) -> String {
     }
 }
 
-/// `.dump`-style script: tables + rows, then views, indexes, triggers, in one transaction.
-// ponytail: virtual tables (FTS etc.) and their shadow tables are dumped as plain DDL and will
-// conflict on re-import; handle them like sqlite3's .dump (writable_schema) if anyone needs it.
-pub fn export_sql_dump(conn: &Connection, out: &Path) -> Result<(), AppError> {
-    let mut w = BufWriter::new(File::create(out).map_err(io_err)?);
+/// One row of `sqlite_schema`.
+struct SchemaRow {
+    kind: String,
+    name: String,
+    table: String,
+    sql: String,
+}
+
+fn line(w: &mut impl Write, text: &str) -> Result<(), AppError> {
+    writeln!(w, "{text}").map_err(io_err)
+}
+
+/// SQL script for the tables and views in `names` (see `SqlExportOptions`).
+/// Objects keep their creation order. Inside the transaction, foreign keys are
+/// checked only at COMMIT, so linked tables load in any order.
+// ponytail: a virtual table exports as CREATE VIRTUAL TABLE plus INSERTs through it (its
+// shadow tables aren't offered); modules that can't take INSERTs won't round-trip.
+pub fn export_sql(conn: &Connection, names: &[String], opts: &SqlExportOptions, w: &mut impl Write) -> Result<(), AppError> {
+    let mut stmt = conn.prepare(EXPORTABLE_OBJECTS).map_err(sql_err)?;
+    let exportable: HashSet<String> =
+        stmt.query_map([], |r| r.get(0)).map_err(sql_err)?.collect::<Result<_, _>>().map_err(sql_err)?;
+    if let Some(gone) = names.iter().find(|n| !exportable.contains(*n)) {
+        return Err(invalid(format!("“{gone}” can't be exported: it is no longer in the database.")));
+    }
+    let wanted: HashSet<&str> = names.iter().map(String::as_str).collect();
     let mut stmt = conn
-        .prepare(
-            "SELECT type, name, sql FROM sqlite_schema WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' \
-             ORDER BY CASE type WHEN 'table' THEN 0 WHEN 'view' THEN 1 WHEN 'index' THEN 2 ELSE 3 END, rowid",
-        )
+        .prepare("SELECT type, name, tbl_name, sql FROM sqlite_schema WHERE sql IS NOT NULL ORDER BY rowid")
         .map_err(sql_err)?;
-    let objects: Vec<(String, String, String)> = stmt
-        .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+    let objects: Vec<SchemaRow> = stmt
+        .query_map([], |r| Ok(SchemaRow { kind: r.get(0)?, name: r.get(1)?, table: r.get(2)?, sql: r.get(3)? }))
         .map_err(sql_err)?
         .collect::<Result<_, _>>()
         .map_err(sql_err)?;
+    let picked = |kind: &str| -> Vec<&SchemaRow> {
+        objects.iter().filter(|o| o.kind == kind && wanted.contains(o.name.as_str())).collect()
+    };
+    let (schema, data) = (opts.content.schema(), opts.content.data());
+    let tables = picked("table");
+    let views = if schema { picked("view") } else { vec![] };
+    if tables.is_empty() && views.is_empty() {
+        return Err(invalid("Nothing to export: tick at least one table."));
+    }
+    let create = |ddl: &str| terminate(&if opts.drop_existing { ddl.to_string() } else { create_if_not_exists(ddl) });
 
-    writeln!(w, "BEGIN TRANSACTION;").map_err(io_err)?;
-    let mut has_sequence = false;
-    for (kind, name, sql) in &objects {
-        writeln!(w, "{sql};").map_err(io_err)?;
-        if kind != "table" {
-            continue;
+    line(w, &format!("-- Querybook SQL export: {} table(s), {} view(s)", tables.len(), views.len()))?;
+    if opts.transaction {
+        line(w, "BEGIN TRANSACTION;")?;
+        line(w, "PRAGMA defer_foreign_keys = ON;")?;
+    }
+    if schema && opts.drop_existing {
+        // Views first, then tables newest first, so children go before their parents.
+        for o in views.iter().chain(tables.iter().rev()) {
+            line(w, &format!("{};", drop_if_exists(&o.kind, &o.name)))?;
         }
-        has_sequence |= sql.to_ascii_uppercase().contains("AUTOINCREMENT");
-        dump_rows(conn, &mut w, name)?;
     }
-    if has_sequence {
-        writeln!(w, "DELETE FROM sqlite_sequence;").map_err(io_err)?;
-        dump_rows(conn, &mut w, "sqlite_sequence")?;
+    // Every table exists before any rows go in: a table may reference one created after it.
+    if schema {
+        for t in &tables {
+            line(w, &create(&t.sql))?;
+        }
+    } else if opts.clear_rows {
+        for t in tables.iter().rev() {
+            line(w, &format!("DELETE FROM {};", quote_ident(&t.name)))?;
+        }
     }
-    writeln!(w, "COMMIT;").map_err(io_err)?;
+    if data {
+        for t in &tables {
+            write_rows(conn, w, &t.name, opts)?;
+        }
+        write_sequences(conn, w, &tables)?;
+    }
+    for v in &views {
+        line(w, &create(&v.sql))?;
+    }
+    if schema && opts.indexes_triggers {
+        // After the rows: indexes build once, and the INSERTs above don't fire triggers.
+        let owners: HashSet<&str> = tables.iter().chain(&views).map(|o| o.name.as_str()).collect();
+        for kind in ["index", "trigger"] {
+            for o in objects.iter().filter(|o| o.kind == kind && owners.contains(o.table.as_str())) {
+                line(w, &create(&o.sql))?;
+            }
+        }
+    }
+    if opts.transaction {
+        line(w, "COMMIT;")?;
+    }
     w.flush().map_err(io_err)
 }
 
-fn dump_rows(conn: &Connection, w: &mut impl Write, table: &str) -> Result<(), AppError> {
-    let cols: Vec<String> = writable_columns(conn, table)?.iter().map(|c| quote_ident(c)).collect();
-    if cols.is_empty() {
+/// INSERTs for every row of `table`. Generated and hidden columns are left out,
+/// so the column list is written whenever the table has any.
+fn write_rows(conn: &Connection, w: &mut impl Write, table: &str, opts: &SqlExportOptions) -> Result<(), AppError> {
+    let writable = writable_columns(conn, table)?;
+    if writable.is_empty() {
         return Ok(());
     }
-    let list = cols.join(",");
+    let all: i64 = conn
+        .query_row("SELECT count(*) FROM pragma_table_xinfo(?1)", [table], |r| r.get(0))
+        .map_err(sql_err)?;
+    let list = writable.iter().map(|c| quote_ident(c)).collect::<Vec<_>>().join(",");
+    let target =
+        if opts.column_names || all as usize != writable.len() { format!("{}({list})", quote_ident(table)) } else { quote_ident(table) };
+    let per_insert = if opts.multi_row { ROWS_PER_INSERT } else { 1 };
+
     let mut stmt = conn.prepare(&format!("SELECT {list} FROM {}", quote_ident(table))).map_err(sql_err)?;
     let mut rows = stmt.query([]).map_err(sql_err)?;
+    let mut batch: Vec<String> = Vec::with_capacity(per_insert);
     while let Some(row) = rows.next().map_err(sql_err)? {
         let vals: Vec<String> =
-            (0..cols.len()).map(|i| row.get_ref(i).map(sql_literal)).collect::<Result<_, _>>().map_err(sql_err)?;
-        writeln!(w, "INSERT INTO {}({list}) VALUES({});", quote_ident(table), vals.join(",")).map_err(io_err)?;
+            (0..writable.len()).map(|i| row.get_ref(i).map(sql_literal)).collect::<Result<_, _>>().map_err(sql_err)?;
+        batch.push(format!("({})", vals.join(",")));
+        if batch.len() == per_insert {
+            line(w, &format!("INSERT INTO {target} VALUES{};", batch.join(",")))?;
+            batch.clear();
+        }
+    }
+    if !batch.is_empty() {
+        line(w, &format!("INSERT INTO {target} VALUES{};", batch.join(",")))?;
+    }
+    Ok(())
+}
+
+/// AUTOINCREMENT counters of the exported tables, so new rows continue where
+/// the source left off. Other tables' counters are left alone.
+fn write_sequences(conn: &Connection, w: &mut impl Write, tables: &[&SchemaRow]) -> Result<(), AppError> {
+    let has_sequence: bool = conn
+        .query_row("SELECT count(*) > 0 FROM sqlite_schema WHERE name = 'sqlite_sequence'", [], |r| r.get(0))
+        .map_err(sql_err)?;
+    if !has_sequence {
+        return Ok(());
+    }
+    let mut stmt = conn.prepare("SELECT seq FROM sqlite_sequence WHERE name = ?1").map_err(sql_err)?;
+    for t in tables {
+        let seq = stmt.query_row([&t.name], |r| r.get_ref(0).map(sql_literal)).optional().map_err(sql_err)?;
+        if let Some(seq) = seq {
+            let name = quote_str(&t.name);
+            line(w, &format!("DELETE FROM sqlite_sequence WHERE name = {name};"))?;
+            line(w, &format!("INSERT INTO sqlite_sequence(name, seq) VALUES({name}, {seq});"))?;
+        }
     }
     Ok(())
 }
@@ -195,6 +291,7 @@ fn dump_rows(conn: &Connection, w: &mut impl Write, table: &str) -> Result<(), A
 mod tests {
     use super::*;
     use crate::db::tests::tmp_dir;
+    use shared::ExportContent;
 
     const SETUP: &str = "
         CREATE TABLE t(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, n REAL, b BLOB, g AS (id * 2));
@@ -208,19 +305,156 @@ mod tests {
         stmt.query_map([], |r| (0..n).map(|i| r.get_ref(i).map(sql_literal)).collect()).unwrap().map(Result::unwrap).collect()
     }
 
+    fn export(conn: &Connection, names: &[&str], opts: &SqlExportOptions) -> String {
+        let names: Vec<String> = names.iter().map(|n| n.to_string()).collect();
+        let mut out = Vec::new();
+        export_sql(conn, &names, opts, &mut out).unwrap();
+        String::from_utf8(out).unwrap()
+    }
+
+    fn one(conn: &Connection, sql: &str) -> String {
+        rows(conn, sql).remove(0).remove(0)
+    }
+
     #[test]
-    fn sql_dump_round_trips() {
-        let dir = tmp_dir("dump");
+    fn everything_round_trips() {
         let src = Connection::open_in_memory().unwrap();
         src.execute_batch(SETUP).unwrap();
-        export_sql_dump(&src, &dir.join("d.sql")).unwrap();
+        src.execute_batch("DELETE FROM t WHERE id = 3; INSERT INTO t(name) VALUES ('x'); DELETE FROM t WHERE id = 4;").unwrap();
+        let script = export(&src, &["t", "v"], &SqlExportOptions::default());
+        assert!(script.contains("BEGIN TRANSACTION;\nPRAGMA defer_foreign_keys = ON;\n"));
+        assert!(script.contains("DROP VIEW IF EXISTS \"v\";\nDROP TABLE IF EXISTS \"t\";\n"));
 
         let dst = Connection::open_in_memory().unwrap();
-        dst.execute_batch(&std::fs::read_to_string(dir.join("d.sql")).unwrap()).unwrap();
+        dst.execute_batch(&script).unwrap();
         let q = "SELECT * FROM t ORDER BY id";
         assert_eq!(rows(&src, q), rows(&dst, q));
-        assert_eq!(rows(&dst, "SELECT seq FROM sqlite_sequence"), vec![vec!["3".to_string()]]);
-        assert_eq!(rows(&dst, "SELECT count(*) FROM sqlite_schema WHERE name IN ('ix','v')"), vec![vec!["2".to_string()]]);
+        // The counter keeps the deleted rows' ids.
+        assert_eq!(one(&dst, "SELECT seq FROM sqlite_sequence WHERE name = 't'"), "4");
+        assert_eq!(one(&dst, "SELECT count(*) FROM sqlite_schema WHERE name IN ('ix','v')"), "2");
+        // Running it again drops and recreates instead of failing.
+        dst.execute_batch(&script).unwrap();
+        assert_eq!(rows(&src, q), rows(&dst, q));
+    }
+
+    #[test]
+    fn one_table_replaces_only_that_table() {
+        let src = Connection::open_in_memory().unwrap();
+        src.execute_batch(
+            "CREATE TABLE a(id INTEGER PRIMARY KEY, v TEXT); INSERT INTO a VALUES (1, 'new'), (2, 'rows');
+             CREATE INDEX a_v ON a(v);
+             CREATE TABLE log(msg); CREATE TRIGGER a_log AFTER INSERT ON a BEGIN INSERT INTO log VALUES ('fired'); END;
+             CREATE TABLE b(x); INSERT INTO b VALUES ('source b');",
+        )
+        .unwrap();
+        let script = export(&src, &["a"], &SqlExportOptions::default());
+        assert!(!script.contains("\"b\"") && !script.contains("CREATE TABLE log"));
+
+        let dst = Connection::open_in_memory().unwrap();
+        dst.execute_batch(
+            "CREATE TABLE a(old_column); INSERT INTO a VALUES ('old');
+             CREATE TABLE log(msg); CREATE TABLE b(x); INSERT INTO b VALUES ('target b');",
+        )
+        .unwrap();
+        dst.execute_batch(&script).unwrap();
+        assert_eq!(rows(&dst, "SELECT id, v FROM a ORDER BY id"), rows(&src, "SELECT id, v FROM a ORDER BY id"));
+        assert_eq!(one(&dst, "SELECT count(*) FROM sqlite_schema WHERE name IN ('a_v', 'a_log')"), "2");
+        // The trigger is created after the rows, so loading them didn't fire it.
+        assert_eq!(one(&dst, "SELECT count(*) FROM log"), "0");
+        assert_eq!(one(&dst, "SELECT x FROM b"), "'target b'");
+    }
+
+    #[test]
+    fn keep_existing_schema_only_runs_twice() {
+        let src = Connection::open_in_memory().unwrap();
+        src.execute_batch(SETUP).unwrap();
+        let opts = SqlExportOptions { content: ExportContent::SchemaOnly, drop_existing: false, ..Default::default() };
+        let script = export(&src, &["t", "v"], &opts);
+        assert!(script.contains("CREATE TABLE IF NOT EXISTS t(") && script.contains("CREATE INDEX IF NOT EXISTS ix"));
+        assert!(!script.contains("INSERT") && !script.contains("DROP"));
+
+        let dst = Connection::open_in_memory().unwrap();
+        dst.execute_batch(&script).unwrap();
+        dst.execute_batch(&script).unwrap();
+        assert_eq!(one(&dst, "SELECT count(*) FROM t"), "0");
+    }
+
+    #[test]
+    fn data_only_options() {
+        let src = Connection::open_in_memory().unwrap();
+        src.execute_batch(SETUP).unwrap();
+        src.execute_batch("WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 250) INSERT INTO t(name) SELECT 'row ' || i FROM n;").unwrap();
+        let opts = SqlExportOptions {
+            content: ExportContent::DataOnly,
+            clear_rows: true,
+            column_names: false,
+            multi_row: true,
+            transaction: false,
+            ..Default::default()
+        };
+        // Views have no data: only the table is written.
+        let script = export(&src, &["t", "v"], &opts);
+        assert!(!script.contains("CREATE") && !script.contains("BEGIN") && !script.contains("\"v\""));
+        assert!(script.contains("DELETE FROM \"t\";"));
+        // 253 rows in batches of 100, and the generated column forces a column list.
+        assert_eq!(script.matches("INSERT INTO \"t\"(\"id\",\"name\",\"n\",\"b\") VALUES(").count(), 3);
+
+        let dst = Connection::open_in_memory().unwrap();
+        dst.execute_batch(SETUP).unwrap();
+        dst.execute_batch(&script).unwrap();
+        let q = "SELECT * FROM t ORDER BY id";
+        assert_eq!(rows(&src, q), rows(&dst, q));
+
+        // A plain table without the column-names option.
+        let plain = Connection::open_in_memory().unwrap();
+        plain.execute_batch("CREATE TABLE p(a, b); INSERT INTO p VALUES (1, 'x');").unwrap();
+        let script = export(&plain, &["p"], &SqlExportOptions { column_names: false, ..Default::default() });
+        assert!(script.contains("INSERT INTO \"p\" VALUES(1,'x');"));
+    }
+
+    #[test]
+    fn linked_tables_load_with_foreign_keys_on() {
+        let src = Connection::open_in_memory().unwrap();
+        src.execute_batch(
+            "CREATE TABLE child(id INTEGER PRIMARY KEY, parent_id REFERENCES parent(id));
+             CREATE TABLE parent(id INTEGER PRIMARY KEY);
+             INSERT INTO parent VALUES (1), (2); INSERT INTO child VALUES (10, 1), (11, 2);",
+        )
+        .unwrap();
+        let script = export(&src, &["child", "parent"], &SqlExportOptions::default());
+
+        let dst = Connection::open_in_memory().unwrap();
+        dst.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+        dst.execute_batch(&script).unwrap();
+        // Again, now that both tables exist and reference each other's rows.
+        dst.execute_batch(&script).unwrap();
+        assert_eq!(one(&dst, "SELECT count(*) FROM child JOIN parent ON parent.id = child.parent_id"), "2");
+    }
+
+    #[test]
+    fn virtual_tables_skip_their_shadow_tables() {
+        let src = Connection::open_in_memory().unwrap();
+        src.execute_batch("CREATE VIRTUAL TABLE docs USING fts5(body); INSERT INTO docs VALUES ('hello world'), ('bye');")
+            .unwrap();
+        let offered: Vec<String> = rows(&src, EXPORTABLE_OBJECTS).into_iter().map(|r| r[0].clone()).collect();
+        assert_eq!(offered, vec!["'docs'"]);
+        assert!(export_sql(&src, &["docs_data".into()], &SqlExportOptions::default(), &mut Vec::new()).is_err());
+
+        let script = export(&src, &["docs"], &SqlExportOptions::default());
+        let dst = Connection::open_in_memory().unwrap();
+        dst.execute_batch(&script).unwrap();
+        dst.execute_batch(&script).unwrap();
+        assert_eq!(one(&dst, "SELECT body FROM docs WHERE docs MATCH 'hello'"), "'hello world'");
+    }
+
+    #[test]
+    fn nothing_to_export() {
+        let src = Connection::open_in_memory().unwrap();
+        src.execute_batch(SETUP).unwrap();
+        let data_only = SqlExportOptions { content: ExportContent::DataOnly, ..Default::default() };
+        assert!(export_sql(&src, &["v".into()], &data_only, &mut Vec::new()).is_err());
+        assert!(export_sql(&src, &[], &SqlExportOptions::default(), &mut Vec::new()).is_err());
+        assert!(export_sql(&src, &["missing".into()], &SqlExportOptions::default(), &mut Vec::new()).is_err());
     }
 
     #[test]

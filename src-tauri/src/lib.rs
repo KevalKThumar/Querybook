@@ -5,11 +5,15 @@ mod db;
 mod io;
 
 use std::fs;
+use std::io::BufWriter;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use db::{Registry, Session, invalid, io_err};
-use shared::{AppError, Cell, CsvPreview, ExecOutcome, KeyInput, OpenOutcome, ResultSet, ScriptOutcome, SessionInfo};
+use shared::{
+    AppError, Cell, CsvPreview, ExecOutcome, KeyInput, OpenOutcome, ResultSet, ScriptOutcome, SessionInfo,
+    SqlExportOptions,
+};
 use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
 use tauri_plugin_dialog::{DialogExt, FilePath, MessageDialogButtons, MessageDialogKind, MessageDialogResult};
 
@@ -282,13 +286,36 @@ async fn export_csv(
     Ok(Some(shown))
 }
 
+/// Export the ticked tables and views as a SQL script the user saves. Reads the
+/// window's own connection, so unwritten changes are included; writes nothing
+/// to the database.
 #[tauri::command]
-async fn export_sql_dump(app: AppHandle, window: WebviewWindow, reg: State<'_, Registry>) -> Res<Option<String>> {
+async fn export_sql(
+    app: AppHandle,
+    window: WebviewWindow,
+    reg: State<'_, Registry>,
+    tables: Vec<String>,
+    options: SqlExportOptions,
+) -> Res<Option<String>> {
     let s = reg.session(window.label())?;
-    let stem = s.path.as_ref().and_then(|p| p.file_stem()).map_or("dump".into(), |n| n.to_string_lossy().into_owned());
+    let stem = match tables.as_slice() {
+        [one] => one.replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_"),
+        _ => s.path.as_ref().and_then(|p| p.file_stem()).map_or("export".into(), |n| n.to_string_lossy().into_owned()),
+    };
     let Some(out) = save_path(&app, &window, &format!("{stem}.sql"), ("SQL script", &["sql"]))? else { return Ok(None) };
     let shown = out.display().to_string();
-    blocking(move || s.with_conn(|c| io::export_sql_dump(c, &out))).await?;
+    blocking(move || {
+        let written = s.with_conn(|c| {
+            let mut w = BufWriter::new(fs::File::create(&out).map_err(io_err)?);
+            io::export_sql(c, &tables, &options, &mut w)
+        });
+        if written.is_err() {
+            // Don't leave half a script behind.
+            let _ = fs::remove_file(&out);
+        }
+        written
+    })
+    .await?;
     Ok(Some(shown))
 }
 
@@ -340,7 +367,7 @@ pub fn run() {
             import_csv,
             import_sql,
             export_csv,
-            export_sql_dump,
+            export_sql,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

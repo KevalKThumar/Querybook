@@ -3,6 +3,8 @@
 //!
 //! Author: Keval Thumar
 
+use shared::ExportContent;
+
 // Tauri commands (registered in src-tauri/src/lib.rs)
 pub const CMD_SESSION_INFO: &str = "session_info";
 pub const CMD_OPEN_DIALOG: &str = "open_dialog";
@@ -18,7 +20,7 @@ pub const CMD_CSV_PREVIEW: &str = "csv_preview";
 pub const CMD_IMPORT_CSV: &str = "import_csv";
 pub const CMD_IMPORT_SQL: &str = "import_sql";
 pub const CMD_EXPORT_CSV: &str = "export_csv";
-pub const CMD_EXPORT_SQL_DUMP: &str = "export_sql_dump";
+pub const CMD_EXPORT_SQL: &str = "export_sql";
 
 // Routes
 pub const ROUTE_BROWSER: &str = "/database/browser";
@@ -127,6 +129,13 @@ pub const COLUMN_TYPES: [&str; 5] = ["INTEGER", "TEXT", "REAL", "BLOB", "NUMERIC
 
 // CSV import separators
 pub const CSV_SEPARATORS: [(&str, char); 4] = [("Comma", ','), ("Semicolon", ';'), ("Tab", '\t'), ("Pipe", '|')];
+
+// What the SQL export writes
+pub const EXPORT_CONTENTS: [(&str, ExportContent); 3] = [
+    ("Schema and data", ExportContent::SchemaAndData),
+    ("Schema only", ExportContent::SchemaOnly),
+    ("Data only", ExportContent::DataOnly),
+];
 
 /// SQL-editor indent inserted by the Tab key.
 pub const EDITOR_INDENT: &str = "    ";

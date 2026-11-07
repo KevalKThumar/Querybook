@@ -13,6 +13,7 @@ use crate::database::components::structure_view::structure_view_component::Struc
 use crate::database::database_structure::{CipherMode, FkJump, SchemaObject, Tab, TabKind};
 use crate::database::dialogs::cipher_dialog::cipher_dialog_component::CipherDialog;
 use crate::database::dialogs::create_table_dialog::create_table_dialog_component::CreateTableDialog;
+use crate::database::dialogs::export_sql_dialog::export_sql_dialog_component::ExportSqlDialog;
 use crate::database::dialogs::import_csv_dialog::import_csv_dialog_component::ImportCsvDialog;
 use crate::shared::common_structure::ThemeMode;
 use crate::shared::services::platform_service::PlatformService;
@@ -39,6 +40,8 @@ pub fn browser_view(
     create_table_open: RwSignal<bool>,
     import_csv_open: RwSignal<bool>,
     import_csv_path: Signal<Option<String>>,
+    export_sql_open: RwSignal<bool>,
+    export_sql_table: Signal<Option<String>>,
     on_open_db: Callback<bool>,
     open_tab: Callback<TabKind>,
     new_sql_tab: Callback<()>,
@@ -52,7 +55,7 @@ pub fn browser_view(
     on_new_table: Callback<()>,
     on_import_csv: Callback<()>,
     on_import_sql: Callback<()>,
-    on_export_sql: Callback<()>,
+    on_export_sql: Callback<Option<String>>,
     on_theme: Callback<()>,
     on_cipher_submit: Callback<Option<KeyInput>>,
     on_cipher_cancel: Callback<()>,
@@ -82,7 +85,7 @@ pub fn browser_view(
                 <button class="btn btn-sm browser-tool" title="Run a .sql script" disabled=disconnected on:click=move |_| on_import_sql.run(())>
                     <i class="bi bi-file-earmark-code"></i><span>"Import SQL"</span>
                 </button>
-                <button class="btn btn-sm browser-tool" title="Export the whole database as SQL" disabled=disconnected on:click=move |_| on_export_sql.run(())>
+                <button class="btn btn-sm browser-tool" title="Export tables and views as SQL" disabled=disconnected on:click=move |_| on_export_sql.run(None)>
                     <i class="bi bi-box-arrow-up"></i><span>"Export SQL"</span>
                 </button>
                 <div class="vr mx-1"></div>
@@ -188,7 +191,7 @@ pub fn browser_view(
                                     let id = tab.id;
                                     let content = match tab.kind {
                                         TabKind::Browse(name) => view! {
-                                            <DataGrid name=name schema=schema in_txn=in_txn data_version=data_version on_changed=on_changed on_open=open_tab jump=jump />
+                                            <DataGrid name=name schema=schema in_txn=in_txn data_version=data_version on_changed=on_changed on_open=open_tab jump=jump on_export_sql=on_export_sql />
                                         }.into_any(),
                                         TabKind::Structure(name) => view! {
                                             <StructureView name=name schema=schema in_txn=in_txn data_version=data_version on_changed=on_changed on_open=open_tab />
@@ -240,6 +243,7 @@ pub fn browser_view(
             />
             <CreateTableDialog open=create_table_open in_txn=in_txn on_changed=on_changed on_open=open_tab />
             <ImportCsvDialog open=import_csv_open path=import_csv_path in_txn=in_txn on_changed=on_changed on_open=open_tab />
+            <ExportSqlDialog open=export_sql_open preselect=export_sql_table encrypted=encrypted />
         </div>
     }
 }

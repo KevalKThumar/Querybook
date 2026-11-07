@@ -164,3 +164,55 @@ pub struct CsvPreview {
     pub columns: Vec<String>,
     pub rows: Vec<Vec<String>>,
 }
+
+/// What the SQL export writes for each table.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ExportContent {
+    #[default]
+    SchemaAndData,
+    SchemaOnly,
+    DataOnly,
+}
+
+impl ExportContent {
+    pub fn schema(self) -> bool {
+        self != ExportContent::DataOnly
+    }
+
+    pub fn data(self) -> bool {
+        self != ExportContent::SchemaOnly
+    }
+}
+
+/// Options of the Export SQL dialog.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SqlExportOptions {
+    pub content: ExportContent,
+    /// Schema: `DROP … IF EXISTS` before creating each object again;
+    /// otherwise `CREATE … IF NOT EXISTS` keeps what's already there.
+    pub drop_existing: bool,
+    /// Data only: `DELETE FROM` each table before its rows.
+    pub clear_rows: bool,
+    /// Schema: the tables' indexes and triggers.
+    pub indexes_triggers: bool,
+    /// `INSERT INTO t(a, b) VALUES …` rather than `INSERT INTO t VALUES …`.
+    pub column_names: bool,
+    /// Up to `sql::ROWS_PER_INSERT` rows in each INSERT.
+    pub multi_row: bool,
+    /// `BEGIN TRANSACTION; … COMMIT;` around the script.
+    pub transaction: bool,
+}
+
+impl Default for SqlExportOptions {
+    fn default() -> Self {
+        Self {
+            content: ExportContent::SchemaAndData,
+            drop_existing: true,
+            clear_rows: false,
+            indexes_triggers: true,
+            column_names: true,
+            multi_row: false,
+            transaction: true,
+        }
+    }
+}

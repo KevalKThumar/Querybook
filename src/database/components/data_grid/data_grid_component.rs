@@ -38,6 +38,8 @@ pub fn DataGrid(
     /// Pending "go to referenced row", shared by every browse tab; the tab
     /// showing `jump.table` applies it and clears it.
     jump: RwSignal<Option<FkJump>>,
+    /// Opens the Export SQL dialog with this table ticked.
+    on_export_sql: Callback<Option<String>>,
 ) -> impl IntoView {
     let toast = expect_context::<ToastService>();
     let name = StoredValue::new(name);
@@ -325,6 +327,7 @@ pub fn DataGrid(
             DatabaseService::export_csv(&format!("SELECT * FROM {}", quote_ident(&table)), &table, toast).await;
         });
     });
+    let on_export_table_sql = Callback::new(move |_: ()| on_export_sql.run(Some(name.get_value())));
 
     let selection_info = Signal::derive(move || {
         selection.with(|s| match s {
@@ -397,6 +400,7 @@ pub fn DataGrid(
         on_null_selected,
         on_refresh,
         on_export,
+        on_export_table_sql,
         fk_targets,
         on_follow_fk,
         inspector_open.into(),

@@ -1,0 +1,70 @@
+@use "../../../../styles/variables" as *;
+
+.sqlexp-dialog { width: 520px; }
+
+.sqlexp-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: $font-size-sm;
+  cursor: pointer;
+}
+
+.sqlexp-all {
+  margin-bottom: $spacing-xs;
+  font-weight: $font-weight-medium;
+}
+
+.sqlexp-list {
+  max-height: 220px;
+  overflow: auto;
+  padding: $spacing-xs 0;
+  border: 1px solid $border;
+  border-radius: $radius;
+}
+
+.sqlexp-item {
+  padding: 3px $spacing-sm;
+  &:hover { background: $bg-hover; }
+  > .bi { color: $text-muted; }
+  &.sqlexp-nodata { opacity: 0.55; }
+}
+
+.sqlexp-hint {
+  margin-left: auto;
+  font-size: $font-size-xs;
+  color: $text-muted;
+  white-space: nowrap;
+}
+
+.sqlexp-empty {
+  padding: $spacing-sm $spacing-md;
+  font-size: $font-size-sm;
+  color: $text-muted;
+}
+
+.sqlexp-options {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: $spacing-sm $spacing-md;
+  margin-top: $spacing-md;
+}
+
+.sqlexp-label {
+  font-size: $font-size-xs;
+  color: $text-muted;
+  line-height: 18px;
+}
+
+.sqlexp-warn {
+  margin-top: $spacing-md;
+  font-size: $font-size-xs;
+  color: $text-muted;
+  > .bi { color: $warning; }
+}
+
+.sqlexp-count {
+  font-size: $font-size-xs;
+  color: $text-muted;
+}

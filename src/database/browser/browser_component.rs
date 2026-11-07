@@ -46,6 +46,8 @@ pub fn Browser() -> impl IntoView {
     let create_table_open = RwSignal::new(false);
     let import_csv_open = RwSignal::new(false);
     let import_csv_path = RwSignal::new(None::<String>);
+    let export_sql_open = RwSignal::new(false);
+    let export_sql_table = RwSignal::new(None::<String>);
 
     let connected = Signal::derive(move || info.with(|i| i.as_ref().is_some_and(|i| i.connected)));
     let encrypted = Signal::derive(move || info.with(|i| i.as_ref().is_some_and(|i| i.encrypted)));
@@ -227,10 +229,10 @@ pub fn Browser() -> impl IntoView {
             }
         });
     });
-    let on_export_sql = Callback::new(move |_: ()| {
-        spawn_local(async move {
-            DatabaseService::export_sql_dump(toast).await;
-        });
+    // Toolbar: everything ticked (None); a Browse tab: just its table.
+    let on_export_sql = Callback::new(move |table: Option<String>| {
+        export_sql_table.set(table);
+        export_sql_open.set(true);
     });
     let on_theme = Callback::new(move |_: ()| theme.cycle());
 
@@ -308,6 +310,8 @@ pub fn Browser() -> impl IntoView {
         create_table_open,
         import_csv_open,
         import_csv_path.into(),
+        export_sql_open,
+        export_sql_table.into(),
         on_open_db,
         open_tab,
         new_sql_tab,

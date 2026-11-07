@@ -38,6 +38,7 @@ pub fn data_grid_view(
     on_null_selected: Callback<()>,
     on_refresh: Callback<()>,
     on_export: Callback<()>,
+    on_export_sql: Callback<()>,
     fk_targets: Signal<Vec<Option<String>>>,
     on_follow_fk: Callback<(usize, usize)>,
     inspector_open: Signal<bool>,
@@ -68,8 +69,11 @@ pub fn data_grid_view(
                 <button class="btn btn-sm grid-tool" title="Reload" on:click=move |_| on_refresh.run(())>
                     <i class="bi bi-arrow-clockwise"></i>
                 </button>
-                <button class="btn btn-sm grid-tool" title="Export to CSV" on:click=move |_| on_export.run(())>
-                    <i class="bi bi-filetype-csv"></i>" Export"
+                <button class="btn btn-sm grid-tool" title="Export to CSV…" on:click=move |_| on_export.run(())>
+                    <i class="bi bi-filetype-csv"></i>" CSV"
+                </button>
+                <button class="btn btn-sm grid-tool" title="Export as SQL: DROP, CREATE and INSERT…" on:click=move |_| on_export_sql.run(())>
+                    <i class="bi bi-filetype-sql"></i>" SQL"
                 </button>
                 <span class="ms-auto grid-count">{move || selection_info.get()}</span>
                 <span class="grid-count">{move || format!("{} rows", total.get())}</span>

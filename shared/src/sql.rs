@@ -274,6 +274,51 @@ pub fn drop_object(kind: &str, name: &str) -> String {
     format!("DROP {} {}", kind.to_uppercase(), quote_ident(name))
 }
 
+pub fn drop_if_exists(kind: &str, name: &str) -> String {
+    format!("DROP {} IF EXISTS {}", kind.to_uppercase(), quote_ident(name))
+}
+
+/// Tables (virtual ones included) and views the SQL export offers, as (name,
+/// type). FTS shadow tables are left out: their virtual table recreates them.
+pub const EXPORTABLE_OBJECTS: &str = "SELECT name, type FROM pragma_table_list \
+     WHERE schema = 'main' AND type IN ('table', 'virtual', 'view') AND name NOT LIKE 'sqlite_%' \
+     ORDER BY name COLLATE NOCASE";
+
+/// Rows in each INSERT when the export packs several together.
+pub const ROWS_PER_INSERT: usize = 100;
+
+/// `CREATE [UNIQUE | VIRTUAL] TABLE|INDEX|VIEW|TRIGGER` statement (as stored in
+/// sqlite_schema) rewritten to `CREATE … IF NOT EXISTS`. Anything else comes
+/// back unchanged.
+pub fn create_if_not_exists(ddl: &str) -> String {
+    let words = significant_tokens(ddl);
+    let kw = |i: usize, options: &[&str]| {
+        words.get(i).is_some_and(|(_, t, s)| *t == Tok::Keyword && options.iter().any(|w| s.eq_ignore_ascii_case(w)))
+    };
+    if !kw(0, &["CREATE"]) {
+        return ddl.to_string();
+    }
+    let mut i = 1;
+    while kw(i, &["TEMP", "TEMPORARY", "UNIQUE", "VIRTUAL"]) {
+        i += 1;
+    }
+    if !kw(i, &["TABLE", "INDEX", "VIEW", "TRIGGER"]) || kw(i + 1, &["IF"]) {
+        return ddl.to_string();
+    }
+    let at = words[i].0;
+    format!("{} IF NOT EXISTS{}", &ddl[..at], &ddl[at..])
+}
+
+/// `statement;`, putting the `;` on its own line when the statement ends in a
+/// `--` comment (sqlite_schema keeps comments typed before the semicolon).
+pub fn terminate(statement: &str) -> String {
+    let statement = statement.trim_end();
+    match tokenize(statement).last() {
+        Some((Tok::Comment, s)) if s.starts_with("--") => format!("{statement}\n;"),
+        _ => format!("{statement};"),
+    }
+}
+
 pub fn create_index(name: &str, table: &str, columns: &[String], unique: bool) -> String {
     let cols: Vec<String> = columns.iter().map(|c| quote_ident(c)).collect();
     format!(
@@ -309,6 +354,36 @@ mod tests {
         assert!(!is_txn_begin("CREATE TRIGGER tr AFTER INSERT ON t BEGIN SELECT 1; END"));
         assert!(!is_txn_end("SELECT 'COMMIT'"));
         assert!(!is_txn_end("ROLLBACK"));
+    }
+
+    #[test]
+    fn if_not_exists_and_if_exists() {
+        assert_eq!(create_if_not_exists("CREATE TABLE t(a)"), "CREATE TABLE IF NOT EXISTS t(a)");
+        assert_eq!(create_if_not_exists("CREATE TABLE \"my t\" (a)"), "CREATE TABLE IF NOT EXISTS \"my t\" (a)");
+        assert_eq!(
+            create_if_not_exists("CREATE UNIQUE INDEX ix ON t(a)"),
+            "CREATE UNIQUE INDEX IF NOT EXISTS ix ON t(a)"
+        );
+        assert_eq!(
+            create_if_not_exists("CREATE VIRTUAL TABLE f USING fts5(x)"),
+            "CREATE VIRTUAL TABLE IF NOT EXISTS f USING fts5(x)"
+        );
+        assert_eq!(
+            create_if_not_exists("CREATE TRIGGER tr AFTER INSERT ON t BEGIN SELECT 1; END"),
+            "CREATE TRIGGER IF NOT EXISTS tr AFTER INSERT ON t BEGIN SELECT 1; END"
+        );
+        assert_eq!(create_if_not_exists("/* v */ create view v as select 1"), "/* v */ create view IF NOT EXISTS v as select 1");
+        assert_eq!(create_if_not_exists("CREATE TABLE IF NOT EXISTS t(a)"), "CREATE TABLE IF NOT EXISTS t(a)");
+        assert_eq!(create_if_not_exists("INSERT INTO t VALUES (1)"), "INSERT INTO t VALUES (1)");
+        assert_eq!(drop_if_exists("table", "a\"b"), r#"DROP TABLE IF EXISTS "a""b""#);
+        assert_eq!(drop_if_exists("view", "v"), r#"DROP VIEW IF EXISTS "v""#);
+    }
+
+    #[test]
+    fn statement_terminator() {
+        assert_eq!(terminate("CREATE TABLE t(a)"), "CREATE TABLE t(a);");
+        assert_eq!(terminate("CREATE TABLE t(a) -- note"), "CREATE TABLE t(a) -- note\n;");
+        assert_eq!(terminate("CREATE TABLE t(a /* x */)  "), "CREATE TABLE t(a /* x */);");
     }
 
     #[test]

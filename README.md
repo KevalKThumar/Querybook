@@ -67,7 +67,8 @@ requests: your data never leaves your computer.
 **Import and export**
 - Import CSV or TSV into a new or existing table, with a preview and a choice of separator.
 - Run a `.sql` script. If it has its own `BEGIN … COMMIT`, that joins the pending changes as well, so the script is only saved when you write the changes.
-- Export a table to CSV, or the whole database as a SQL dump.
+- Export a table to CSV.
+- Export tables and views as SQL: tick one, several or all of them (the **SQL** button on a table's Browse tab ticks just that table). For each table the script can drop it and create it again (or keep it with `CREATE … IF NOT EXISTS`) and insert the rows it has now. You can also export the schema only or the data only (optionally deleting the existing rows first), include indexes and triggers, write column names in each INSERT, put several rows in one INSERT, and wrap everything in a transaction.
 
 **Database tab**
 - File size, free space, page size, encoding, journal mode, auto-vacuum, user version, application ID, object counts, and the SQLite and SQLCipher versions.

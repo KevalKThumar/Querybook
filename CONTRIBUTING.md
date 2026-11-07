@@ -21,7 +21,7 @@ Querybook/
 │   │   ├── browser/      #   the database window: toolbar, tabs, status bar
 │   │   ├── welcome/      #   the empty-window screen
 │   │   ├── components/   #   grid, data_grid, sql_editor, structure_view, cell_inspector, database_info, …
-│   │   ├── dialogs/      #   cipher, create_table, import_csv, snippets
+│   │   ├── dialogs/      #   cipher, create_table, import_csv, export_sql, snippets
 │   │   ├── database_service.rs    # the only place that calls the backend
 │   │   ├── database_constant.rs   # command names, SQL used by the UI, limits
 │   │   └── database_structure.rs  # plain data types
