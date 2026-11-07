@@ -11,21 +11,22 @@ use leptos::logging::*;
 use leptos::prelude::*;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use shared::history::HistoryPage;
 use shared::{
     AppError, Cell, CsvPreview, ExecOutcome, KeyInput, OpenOutcome, ResultSet, ScriptOutcome, SessionInfo,
     SqlExportOptions, sql,
 };
 
 use crate::database::database_constant::{
-    CMD_CANCEL, CMD_CONNECT, CMD_CSV_PREVIEW, CMD_EXECUTE, CMD_EXEC_SCRIPT, CMD_EXPORT_CSV, CMD_EXPORT_SQL,
-    CMD_IMPORT_CSV, CMD_IMPORT_SQL, CMD_OPEN_DIALOG, CMD_OPEN_PATH, CMD_PICK_IMPORT_FILE, CMD_QUERY,
-    CMD_SESSION_INFO, CMD_SET_ENCRYPTION, HISTORY_SEPARATOR, MAX_HISTORY, MAX_RECENT_FILES, SNIPPET_NAME_SEPARATOR,
-    SQL_BEGIN_EDIT, SQL_FOREIGN_KEYS, SQL_LOAD_SCHEMA, SQL_REVERT_CHANGES, SQL_TABLE_COLUMNS, SQL_WRITE_CHANGES,
-    STORAGE_HISTORY_PREFIX, STORAGE_RECENT_FILES, STORAGE_SNIPPETS,
+    CMD_CANCEL, CMD_CHANGE_HISTORY, CMD_CLEAR_CHANGE_HISTORY, CMD_CONNECT, CMD_CSV_PREVIEW, CMD_EXECUTE,
+    CMD_EXEC_SCRIPT, CMD_EXPORT_CSV, CMD_EXPORT_SQL, CMD_IMPORT_CSV, CMD_IMPORT_SQL, CMD_OPEN_DIALOG, CMD_OPEN_PATH,
+    CMD_PICK_IMPORT_FILE, CMD_QUERY, CMD_SESSION_INFO, CMD_SET_ENCRYPTION, CMD_WRITE_CHANGES, HISTORY_SEPARATOR,
+    MAX_HISTORY, MAX_RECENT_FILES, SNIPPET_NAME_SEPARATOR, SQL_BEGIN_EDIT, SQL_FOREIGN_KEYS, SQL_LOAD_SCHEMA,
+    SQL_REVERT_CHANGES, SQL_TABLE_COLUMNS, STORAGE_HISTORY_PREFIX, STORAGE_RECENT_FILES, STORAGE_SNIPPETS,
 };
 use crate::database::database_structure::{
     ColumnInfo, CsvPreviewRequest, DatabaseService, ExportCsvRequest, ExportItem, ExportSqlRequest, ForeignKey,
-    ImportCsvRequest, KeyRequest,
+    HistoryRequest, ImportCsvRequest, KeyRequest,
     OpenDialogRequest, PathRequest, PickFileRequest, SchemaObject, ScriptRequest, SqlRequest,
 };
 use crate::shared::services::local_storage_service::LocalStorageService;
@@ -176,12 +177,25 @@ impl DatabaseService {
         }
     }
 
+    // Keval Thumar
+    // Write the pending changes to the file; the backend records the save in
+    // the change history.
     pub async fn write_changes(toast: ToastService) -> bool {
-        Self::execute(SQL_WRITE_CHANGES, &[], toast).await.is_some()
+        Self::call::<_, ()>(CMD_WRITE_CHANGES, &NoArgs {}, toast).await.is_some()
     }
 
     pub async fn revert_changes(toast: ToastService) -> bool {
         Self::execute(SQL_REVERT_CHANGES, &[], toast).await.is_some()
+    }
+
+    // Keval Thumar
+    // The latest `limit` saves of this database on this device, newest first.
+    pub async fn change_history(limit: u32, toast: ToastService) -> Option<HistoryPage> {
+        Self::call(CMD_CHANGE_HISTORY, &HistoryRequest { limit }, toast).await
+    }
+
+    pub async fn clear_change_history(toast: ToastService) -> bool {
+        Self::call::<_, ()>(CMD_CLEAR_CHANGE_HISTORY, &NoArgs {}, toast).await.is_some()
     }
 
     /// `kind` is "csv" or "sql".

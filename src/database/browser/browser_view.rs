@@ -5,6 +5,7 @@
 use leptos::prelude::*;
 use shared::KeyInput;
 
+use crate::database::components::change_history::change_history_component::ChangeHistory;
 use crate::database::components::data_grid::data_grid_component::DataGrid;
 use crate::database::components::database_info::database_info_component::DatabaseInfo;
 use crate::database::components::schema_sidebar::schema_sidebar_component::SchemaSidebar;
@@ -91,6 +92,9 @@ pub fn browser_view(
                 <div class="vr mx-1"></div>
                 <button class="btn btn-sm browser-tool" title="Database info and maintenance (integrity check, VACUUM…)" disabled=disconnected on:click=move |_| open_tab.run(TabKind::Info)>
                     <i class="bi bi-info-square"></i><span>"Info"</span>
+                </button>
+                <button class="btn btn-sm browser-tool" title="The last changes saved to this database on this device" disabled=disconnected on:click=move |_| open_tab.run(TabKind::History)>
+                    <i class="bi bi-clock-history"></i><span>"History"</span>
                 </button>
 
                 <div class="ms-auto"></div>
@@ -201,6 +205,9 @@ pub fn browser_view(
                                         }.into_any(),
                                         TabKind::Info => view! {
                                             <DatabaseInfo in_txn=in_txn data_version=data_version file_path=file_path encrypted=encrypted schema=schema on_changed=on_changed />
+                                        }.into_any(),
+                                        TabKind::History => view! {
+                                            <ChangeHistory in_txn=in_txn data_version=data_version encrypted=encrypted file_name=file_name />
                                         }.into_any(),
                                     };
                                     view! {

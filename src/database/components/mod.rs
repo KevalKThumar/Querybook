@@ -1,4 +1,5 @@
 pub mod cell_inspector;
+pub mod change_history;
 pub mod data_grid;
 pub mod database_info;
 pub mod grid;

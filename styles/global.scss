@@ -30,6 +30,7 @@
 @use "../src/database/components/cell_inspector/cell_inspector";
 @use "../src/database/components/structure_view/structure_view";
 @use "../src/database/components/database_info/database_info";
+@use "../src/database/components/change_history/change_history";
 @use "../src/database/components/sql_editor/sql_editor";
 @use "../src/database/components/sql_code/sql_code";
 @use "../src/database/dialogs/cipher_dialog/cipher_dialog";

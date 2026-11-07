@@ -13,6 +13,9 @@ pub const CMD_CONNECT: &str = "connect";
 pub const CMD_QUERY: &str = "query";
 pub const CMD_EXECUTE: &str = "execute";
 pub const CMD_EXEC_SCRIPT: &str = "exec_script";
+pub const CMD_WRITE_CHANGES: &str = "write_changes";
+pub const CMD_CHANGE_HISTORY: &str = "change_history";
+pub const CMD_CLEAR_CHANGE_HISTORY: &str = "clear_change_history";
 pub const CMD_CANCEL: &str = "cancel";
 pub const CMD_SET_ENCRYPTION: &str = "set_encryption";
 pub const CMD_PICK_IMPORT_FILE: &str = "pick_import_file";
@@ -33,9 +36,15 @@ pub const MAX_RECENT_FILES: usize = 10;
 // Pending changes ("Write Changes" / "Revert Changes", like DB Browser).
 // Grid edits and schema dialogs open this savepoint; the backend opens it for
 // SQL-editor and script statements that write. Shared with the backend.
+// Writing them is its own command (CMD_WRITE_CHANGES), which records the save.
 pub const SQL_BEGIN_EDIT: &str = shared::sql::BEGIN_EDIT;
-pub const SQL_WRITE_CHANGES: &str = shared::sql::WRITE_CHANGES;
 pub const SQL_REVERT_CHANGES: &str = shared::sql::REVERT_CHANGES;
+
+// Change history (History tab)
+/// Saves shown: the latest few. The backend keeps all of them.
+pub const HISTORY_SHOWN: u32 = 3;
+/// Rows listed per table before "Show N more".
+pub const HISTORY_ROWS_PER_TABLE: usize = 20;
 
 // Schema
 pub const SQL_LOAD_SCHEMA: &str = "SELECT type, name, tbl_name, COALESCE(sql, '') FROM sqlite_schema \

@@ -81,6 +81,8 @@ pub enum TabKind {
     Sql(u32),
     /// Database info + maintenance (integrity check, VACUUM, …).
     Info,
+    /// The last saves made to this database on this device.
+    History,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -95,6 +97,7 @@ impl Tab {
             TabKind::Browse(name) | TabKind::Structure(name) => name.clone(),
             TabKind::Sql(n) => format!("SQL {n}"),
             TabKind::Info => "Database".to_string(),
+            TabKind::History => "History".to_string(),
         }
     }
 
@@ -104,6 +107,7 @@ impl Tab {
             TabKind::Structure(_) => "bi bi-diagram-3",
             TabKind::Sql(_) => "bi bi-terminal",
             TabKind::Info => "bi bi-info-square",
+            TabKind::History => "bi bi-clock-history",
         }
     }
 }
@@ -304,6 +308,11 @@ pub struct ImportCsvRequest<'a> {
 pub struct ExportCsvRequest<'a> {
     pub sql: &'a str,
     pub name: &'a str,
+}
+
+#[derive(Serialize)]
+pub struct HistoryRequest {
+    pub limit: u32,
 }
 
 #[derive(Serialize)]

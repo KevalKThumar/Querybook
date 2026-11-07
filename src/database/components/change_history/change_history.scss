@@ -1,0 +1,135 @@
+@use "../../../../styles/variables" as *;
+
+.chist-content {
+  max-width: 980px;
+  padding: $spacing-lg $spacing-xl $spacing-xl;
+}
+
+.chist-heading {
+  margin: 0;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-semibold;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: $text-muted;
+}
+
+.chist-note, .chist-footer {
+  font-size: $font-size-xs;
+  color: $text-muted;
+}
+
+.chist-note { margin: $spacing-xs 0 $spacing-md; }
+.chist-footer { margin-top: $spacing-sm; }
+
+.chist-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: $spacing-sm;
+  padding: $spacing-xl 0;
+  color: $text-muted;
+
+  > .bi { font-size: 28px; }
+}
+
+.chist-card {
+  margin-bottom: $spacing-md;
+  padding: $spacing-sm $spacing-md $spacing-md;
+  border: 1px solid $border;
+  border-radius: $radius;
+  background: $bg;
+}
+
+.chist-card-head {
+  display: flex;
+  align-items: baseline;
+  gap: $spacing-sm;
+  margin-bottom: $spacing-xs;
+
+  > .bi { color: $primary; }
+}
+
+.chist-when { font-weight: $font-weight-semibold; }
+
+.chist-summary, .chist-counts {
+  font-size: $font-size-sm;
+  color: $text-muted;
+}
+
+.chist-schema {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  &:empty { display: none; }
+
+  summary {
+    cursor: pointer;
+    font-size: $font-size-sm;
+  }
+}
+
+.chist-sql {
+  max-height: 240px;
+  margin: $spacing-xs 0 $spacing-sm;
+  padding: $spacing-sm;
+  overflow: auto;
+  border-radius: $radius-sm;
+  background: $bg-subtle;
+  font-family: $font-mono;
+  font-size: $font-size-xs;
+  white-space: pre-wrap;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.chist-table { margin-top: $spacing-sm; }
+
+.chist-table-head {
+  display: flex;
+  align-items: baseline;
+  gap: $spacing-sm;
+  font-size: $font-size-sm;
+
+  > .bi { color: $text-muted; }
+}
+
+.chist-rows {
+  margin: $spacing-xs 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chist-row {
+  display: flex;
+  align-items: baseline;
+  gap: $spacing-sm;
+  padding: 2px 0 2px $spacing-md;
+  font-size: $font-size-sm;
+  user-select: text;
+  -webkit-user-select: text;
+
+  > .bi { flex: none; }
+}
+
+.chist-key {
+  flex: none;
+  min-width: 72px;
+  color: $text-muted;
+  font-family: $font-mono;
+  font-size: $font-size-xs;
+}
+
+.chist-values {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: $font-mono;
+  font-size: $font-size-xs;
+}
+
+.chist-more {
+  padding: 0 0 0 $spacing-md;
+  font-size: $font-size-xs;
+}
