@@ -63,8 +63,22 @@ open an encrypted database and change or remove its key.
 
 ## Making a release
 
-1. Bump `version` in `src-tauri/tauri.conf.json` and the three `Cargo.toml` files, and add an entry to [CHANGELOG.md](CHANGELOG.md).
-2. Stop `cargo tauri dev`, then run `cargo tauri build --bundles app,dmg`.
-3. Zip the app without breaking its signature:
+The [Release workflow](.github/workflows/release.yml) builds both platforms on GitHub's machines.
+
+1. Bump `version` in `src-tauri/tauri.conf.json` and the three `Cargo.toml` files, and add a `## [X.Y.Z]` section to [CHANGELOG.md](CHANGELOG.md). Commit and push.
+2. Tag the commit and push the tag:
+   ```sh
+   git tag vX.Y.Z
+   git push origin vX.Y.Z
+   ```
+3. The workflow builds the macOS `.dmg` and zipped `.app` (Apple Silicon) and the Windows `…_x64-setup.exe`. It then creates a **draft** release with those files and the CHANGELOG section as its notes. The tag must match the version in `tauri.conf.json`, or the build stops.
+4. Check the draft under **Releases** on GitHub and press **Publish release**.
+
+To try a build without releasing, open **Actions → Release → Run workflow**. The files are attached to the run as artifacts.
+
+To build a release locally instead:
+
+1. Stop `cargo tauri dev`, then run `cargo tauri build --bundles app,dmg` on a Mac, or `cargo tauri build` on Windows.
+2. On the Mac, zip the app without breaking its signature:
    `ditto -c -k --sequesterRsrc --keepParent target/release/bundle/macos/Querybook.app Querybook.app.zip`
-4. Create a GitHub release tagged `vX.Y.Z` and attach the `.dmg` and the `.app.zip`.
+3. Create a GitHub release tagged `vX.Y.Z` and attach the files.
