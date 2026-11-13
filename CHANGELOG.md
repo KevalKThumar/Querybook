@@ -2,6 +2,14 @@
 
 All notable changes to Querybook are listed here. Versions follow [Semantic Versioning](https://semver.org).
 
+## [1.1.1] — 2026-11-13
+
+### Changed
+- The Export SQL dialog's button reads **Export**.
+
+### Fixed
+- A count of one reads in the singular: "1 row", "1 table", "1 view · 1 index", "1 row returned", "Delete 1 row?", "1 statement · 1 row changed", and likewise in the cell inspector, the Database tab and the import messages.
+
 ## [1.1.0] — 2026-11-08
 
 ### Added
@@ -58,5 +66,7 @@ First public release, for macOS on Apple Silicon.
 - Database tab: file facts, the foreign-key enforcement switch, and integrity, quick and foreign-key checks, optimize and VACUUM.
 - Light, dark and system themes.
 
+[1.1.1]: https://github.com/KevalKThumar/Querybook/releases/tag/v1.1.1
+[1.1.0]: https://github.com/KevalKThumar/Querybook/releases/tag/v1.1.0
 [1.0.0]: https://github.com/KevalKThumar/Querybook/releases/tag/v1.0.0
 [0.1.0]: https://github.com/KevalKThumar/Querybook/releases/tag/v0.1.0
