@@ -196,6 +196,14 @@ cargo test -p shared -p querybook     # SQL builders, formatter, encryption flow
 cargo test -p querybook-ui --lib      # UI logic that runs natively
 ```
 
+On macOS, test the built app end to end through its real UI with
+[agent-desktop](https://github.com/vercel-labs/agent-desktop) (`npm install -g agent-desktop`).
+It takes keyboard focus for about a minute:
+
+```sh
+scripts/e2e-macos.sh                  # the app from cargo tauri build; or pass a path to Querybook.app
+```
+
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the project layout and conventions.
 
 ## Known limitations
