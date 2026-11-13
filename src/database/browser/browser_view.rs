@@ -3,6 +3,7 @@
 //! Author: Keval Thumar
 
 use leptos::prelude::*;
+use shared::format::count;
 use shared::KeyInput;
 
 use crate::database::components::change_history::change_history_component::ChangeHistory;
@@ -235,7 +236,7 @@ pub fn browser_view(
                     }}
                 </span>
                 <span class="text-nowrap">
-                    {move || format!("{} tables", schema.with(|s| s.iter().filter(|o| o.kind == "table").count()))}
+                    {move || count(schema.with(|s| s.iter().filter(|o| o.kind == "table").count()) as u64, "table")}
                 </span>
             </div>
 

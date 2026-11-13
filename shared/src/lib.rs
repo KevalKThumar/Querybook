@@ -32,7 +32,7 @@ impl Cell {
         match self {
             Cell::Null => "NULL".into(),
             Cell::Int(s) | Cell::Real(s) | Cell::Text(s) => s.clone(),
-            Cell::Blob(n) => format!("BLOB ({n} bytes)"),
+            Cell::Blob(n) => format!("BLOB ({})", format::count(*n as u64, "byte")),
         }
     }
 }

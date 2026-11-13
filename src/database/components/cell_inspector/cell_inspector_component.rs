@@ -8,7 +8,7 @@
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use shared::format::{hex_dump, json_pretty};
+use shared::format::{count, hex_dump, json_pretty};
 use shared::Cell;
 
 use super::cell_inspector_view::cell_inspector_view;
@@ -74,9 +74,9 @@ pub fn CellInspector(
         None => "",
     });
     let size = Signal::derive(move || match current.get() {
-        Some(Cell::Blob(n)) => format!("{n} bytes"),
+        Some(Cell::Blob(n)) => count(n as u64, "byte"),
         Some(Cell::Null) | None => String::new(),
-        Some(_) => draft.with(|d| format!("{} chars", d.chars().count())),
+        Some(_) => draft.with(|d| count(d.chars().count() as u64, "char")),
     });
     let json = Signal::derive(move || draft.with(|d| json_pretty(d)));
     // Blobs: the fetched bytes. Text: its UTF-8 bytes (shows hidden characters).

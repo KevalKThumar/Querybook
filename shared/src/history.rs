@@ -6,6 +6,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::format::count;
 use crate::Cell;
 
 /// Longest text value kept in the history, in characters.
@@ -172,10 +173,6 @@ pub fn show(cell: &Cell) -> String {
         Cell::Text(s) => format!("\"{s}\""),
         other => other.display(),
     }
-}
-
-fn count(n: u64, what: &str) -> String {
-    format!("{n} {what}{}", if n == 1 { "" } else { "s" })
 }
 
 #[cfg(test)]

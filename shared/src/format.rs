@@ -1,5 +1,5 @@
 //! Text formatters: SQL (keyword case + clause line breaks), JSON (re-indent
-//! without parsing, so numbers keep every digit) and hex dumps.
+//! without parsing, so numbers keep every digit), hex dumps and counts.
 
 use crate::lexer::{tokenize, Tok};
 
@@ -271,6 +271,11 @@ pub fn hex_dump(bytes: &[u8]) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+/// "1 row", "2 rows": the count, then the noun with an "s" unless the count is 1.
+pub fn count(n: u64, what: &str) -> String {
+    format!("{n} {what}{}", if n == 1 { "" } else { "s" })
 }
 
 #[cfg(test)]

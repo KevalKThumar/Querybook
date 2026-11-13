@@ -6,6 +6,7 @@
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+use shared::format::count;
 use shared::CsvPreview;
 
 use super::import_csv_dialog_view::import_csv_dialog_view;
@@ -64,7 +65,7 @@ pub fn ImportCsvDialog(
         spawn_local(async move {
             if DatabaseService::begin_edit(in_txn, toast).await {
                 if let Some(out) = DatabaseService::import_csv(&p, &table, sep, has_header, toast).await {
-                    toast.success(&format!("Imported {} rows into “{table}”.", out.affected));
+                    toast.success(&format!("Imported {} into “{table}”.", count(out.affected, "row")));
                     on_changed.run(out.in_txn);
                     on_open.run(TabKind::Browse(table));
                     open.set(false);

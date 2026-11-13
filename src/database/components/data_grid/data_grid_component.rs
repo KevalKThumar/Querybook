@@ -13,7 +13,7 @@ use std::collections::{HashMap, HashSet};
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use shared::format::from_hex;
+use shared::format::{count, from_hex};
 use shared::sql::{self, quote_ident, RowKey};
 use shared::Cell;
 
@@ -371,7 +371,7 @@ pub fn DataGrid(
     });
     let on_toggle_inspector = Callback::new(move |_: ()| inspector_open.update(|o| *o = !*o));
 
-    let delete_message = Signal::derive(move || format!("Delete {} rows? You can still revert until you write changes.", pending_delete.with(|p| p.len())));
+    let delete_message = Signal::derive(move || format!("Delete {}? You can still revert until you write changes.", count(pending_delete.with(|p| p.len()) as u64, "row")));
     let table_name = Signal::derive(move || name.get_value());
 
     data_grid_view(

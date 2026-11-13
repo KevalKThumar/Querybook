@@ -3,6 +3,7 @@
 //! Author: Keval Thumar
 
 use leptos::prelude::*;
+use shared::format::count;
 use shared::Cell;
 
 use crate::database::components::cell_inspector::cell_inspector_component::CellInspector;
@@ -76,7 +77,7 @@ pub fn data_grid_view(
                     <i class="bi bi-filetype-sql"></i>" SQL"
                 </button>
                 <span class="ms-auto grid-count">{move || selection_info.get()}</span>
-                <span class="grid-count">{move || format!("{} rows", total.get())}</span>
+                <span class="grid-count">{move || count(total.get() as u64, "row")}</span>
                 <button
                     class="btn btn-sm grid-tool ms-2"
                     class:active=move || inspector_open.get()

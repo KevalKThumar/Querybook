@@ -150,7 +150,7 @@ pub fn export_sql_dialog_view(
                     disabled=move || nothing_to_export.get() || exporting.get()
                     on:click=move |_| on_export.run(())
                 >
-                    "Export…"
+                    "Export"
                 </button>
             </div>
         </DialogShell>

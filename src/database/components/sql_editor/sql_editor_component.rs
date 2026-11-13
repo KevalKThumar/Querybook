@@ -377,12 +377,12 @@ pub fn SqlEditor(
                 None => {
                     let rows = o.result.as_ref().map(|r| {
                         let more = if r.truncated { " (first rows only)" } else { "" };
-                        format!(" · {} rows returned{more}", r.rows.len())
+                        format!(" · {} returned{more}", format::count(r.rows.len() as u64, "row"))
                     });
                     let summary = format!(
-                        "{} statement(s) · {} row(s) changed{} · {} ms",
-                        o.statements,
-                        o.affected,
+                        "{} · {} changed{} · {} ms",
+                        format::count(o.statements as u64, "statement"),
+                        format::count(o.affected, "row"),
                         rows.unwrap_or_default(),
                         o.millis
                     );

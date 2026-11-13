@@ -94,7 +94,7 @@ see "Revert restores the grid" vip
 # ── SQL editor ──
 key cmd+t; wait_text "Write SQL here"
 type_into "$(ref textfield 'Write SQL here')" "update orders set total = 99 where id = 1"
-key escape; key cmd+return; wait_text "1 row(s) changed"
+key escape; key cmd+return; see "SQL status reads in the singular" "1 statement · 1 row changed"
 check "SQL changes wait for Write Changes" "$(q 'select total from orders where id=1')" "50.5"
 click button "Write Changes"; sleep 1
 check "Write Changes writes SQL changes" "$(q 'select total from orders where id=1')" "99.0"

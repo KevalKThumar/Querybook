@@ -6,6 +6,7 @@
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+use shared::format::count;
 use shared::Cell;
 
 use super::database_info_view::database_info_view;
@@ -52,7 +53,11 @@ pub fn DatabaseInfo(
             let objects = schema.with_untracked(|s| {
                 SCHEMA_GROUPS
                     .iter()
-                    .map(|(kind, label)| format!("{} {}", s.iter().filter(|o| o.kind == *kind).count(), label.to_lowercase()))
+                    .map(|(kind, label)| {
+                        // Singular from the type ("index"), plural from the label ("Indexes").
+                        let total = s.iter().filter(|o| o.kind == *kind).count();
+                        format!("{total} {}", if total == 1 { kind.to_string() } else { label.to_lowercase() })
+                    })
                     .collect::<Vec<_>>()
                     .join(" · ")
             });
@@ -60,8 +65,8 @@ pub fn DatabaseInfo(
             facts.set(vec![
                 ("File", file_path.get_untracked()),
                 ("Size", human_bytes(page * pages)),
-                ("Free space", format!("{} in {free} free pages", human_bytes(page * free))),
-                ("Page size", format!("{page} bytes · {pages} pages")),
+                ("Free space", format!("{} in {}", human_bytes(page * free), count(free, "free page"))),
+                ("Page size", format!("{page} bytes · {}", count(pages, "page"))),
                 ("Encoding", v(3)),
                 ("Journal mode", v(4)),
                 ("Auto-vacuum", ["None", "Full", "Incremental"].get(n(5) as usize).unwrap_or(&"?").to_string()),

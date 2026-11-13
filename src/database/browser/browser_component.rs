@@ -9,6 +9,7 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_router::hooks::use_navigate;
 use leptos_router::NavigateOptions;
+use shared::format::count;
 use shared::{ErrorKind, FileKind, KeyInput, SessionInfo};
 
 use super::browser_view::browser_view;
@@ -223,7 +224,7 @@ pub fn Browser() -> impl IntoView {
             if let Some(out) = DatabaseService::import_sql(&path, toast).await {
                 match &out.error {
                     Some(e) => toast.error(e),
-                    None => toast.success(&format!("Ran {} statements.", out.statements)),
+                    None => toast.success(&format!("Ran {}.", count(out.statements as u64, "statement"))),
                 }
                 on_changed.run(out.in_txn);
             }
