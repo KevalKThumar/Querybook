@@ -50,6 +50,7 @@
       {
         "ext": ["db", "db3", "sqlite", "sqlite3", "sqlcipher"],
         "name": "SQLite Database",
+        "mimeType": "application/vnd.sqlite3",
         "role": "Editor",
         "rank": "Alternate"
       }

@@ -35,7 +35,8 @@ fn title_for(path: &Path) -> String {
 
 /// A session for `path` that keeps its change history in the app data folder
 /// (`%APPDATA%\com.kevalthumar.querybook\history` on Windows,
-/// `~/Library/Application Support/com.kevalthumar.querybook/history` on macOS).
+/// `~/Library/Application Support/com.kevalthumar.querybook/history` on macOS,
+/// `~/.local/share/com.kevalthumar.querybook/history` on Linux).
 fn new_session(app: &AppHandle, path: PathBuf) -> Session {
     Session::new(Some(path)).with_history(app.path().app_data_dir().ok().map(|d| d.join("history")))
 }
@@ -113,11 +114,12 @@ async fn open_path(app: AppHandle, window: WebviewWindow, path: String) -> Res<O
 }
 
 /// Files opened from outside the app while it runs: Finder on macOS (an Apple
-/// event, not argv), or on Windows a second launch (double-click in File
-/// Explorer, Open With) that the single-instance plugin forwards here.
+/// event, not argv), or on Windows and Linux a second launch (double-click in
+/// File Explorer or the file manager, Open With) that the single-instance
+/// plugin forwards here.
 /// On a macOS cold launch the event arrives before setup has created any
 /// window, so the first file is queued for "main".
-#[cfg(any(target_os = "macos", windows))]
+#[cfg(any(target_os = "macos", windows, target_os = "linux"))]
 fn open_external(app: &AppHandle, paths: Vec<PathBuf>) {
     let reg = app.state::<Registry>();
     let main = app.get_webview_window("main");
@@ -143,10 +145,11 @@ fn open_external(app: &AppHandle, paths: Vec<PathBuf>) {
     }
 }
 
-/// Windows: Querybook was launched again (a file double-clicked in File
-/// Explorer, or the Start menu). Open its files here instead of in a second
-/// process, so one database is never open in two apps at once.
-#[cfg(windows)]
+/// Windows and Linux: Querybook was launched again (a file double-clicked in
+/// File Explorer or the file manager, or the Start menu / app launcher). Open
+/// its files here instead of in a second process, so one database is never
+/// open in two apps at once.
+#[cfg(any(windows, target_os = "linux"))]
 fn on_second_instance(app: &AppHandle, argv: Vec<String>, cwd: String) {
     let paths: Vec<PathBuf> = argv.iter().skip(1).map(|a| Path::new(&cwd).join(a)).filter(|p| p.is_file()).collect();
     if paths.is_empty() {
@@ -352,7 +355,7 @@ async fn export_sql(
 pub fn run() {
     let builder = tauri::Builder::default();
     // Must be the first plugin: a second launch exits before anything else starts.
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "linux"))]
     let builder = builder.plugin(tauri_plugin_single_instance::init(on_second_instance));
     builder
         .plugin(tauri_plugin_dialog::init())

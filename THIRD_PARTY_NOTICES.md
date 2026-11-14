@@ -1,6 +1,6 @@
 # Third-party notices
 
-Querybook (the macOS `.app` / `.dmg`, the Windows installer, and this source tree) includes or links
+Querybook (the macOS `.app` / `.dmg`, the Windows installer, the Linux packages, and this source tree) includes or links
 the components below. Each keeps its own license; this file reproduces the notices
 those licenses require.
 
@@ -92,7 +92,7 @@ The app is built from Rust crates published on crates.io, almost all under
 
 | Crate | Used for | License |
 |---|---|---|
-| tauri, tauri-build, tauri-plugin-dialog, tauri-plugin-single-instance | desktop shell, windows, native dialogs, one instance on Windows | MIT OR Apache-2.0 |
+| tauri, tauri-build, tauri-plugin-dialog, tauri-plugin-single-instance | desktop shell, windows, native dialogs, one instance on Windows and Linux | MIT OR Apache-2.0 |
 | openssl-src, openssl-sys | builds and links OpenSSL (Windows, Linux) | MIT OR Apache-2.0 / MIT |
 | dunce | Windows path normalization | CC0-1.0 OR MIT-0 OR Apache-2.0 |
 | leptos, leptos_router | user interface | MIT |
@@ -104,3 +104,12 @@ The app is built from Rust crates published on crates.io, almost all under
 
 Each crate's full license text ships with its source on crates.io. The complete
 dependency list is in `Cargo.lock`.
+
+## Linux AppImage
+
+The `.deb` and `.rpm` use the system's WebKitGTK and GTK. The AppImage instead
+carries unmodified copies of those and their dependencies (mostly LGPL-2.1 or
+later) from Ubuntu 22.04, so it runs without installing them. Their licenses and
+sources are available from Ubuntu (https://packages.ubuntu.com/jammy/), and you
+can replace them with your own builds by extracting the AppImage
+(`--appimage-extract`).

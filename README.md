@@ -5,11 +5,11 @@
 <h1 align="center">Querybook</h1>
 
 <p align="center">
-  A fast, modern SQLite and SQLCipher browser for macOS and Windows. Open as many databases as you like, each in its own window.
+  A fast, modern SQLite and SQLCipher browser for macOS, Windows and Linux. Open as many databases as you like, each in its own window.
 </p>
 
 <p align="center">
-  <a href="https://github.com/KevalKThumar/Querybook/releases/latest"><b>Download for macOS</b></a> ·
+  <a href="https://github.com/KevalKThumar/Querybook/releases/latest"><b>Download</b></a> ·
   <a href="#features">Features</a> ·
   <a href="#keyboard-shortcuts">Shortcuts</a> ·
   <a href="#build-from-source">Build from source</a>
@@ -31,7 +31,7 @@ requests: your data never leaves your computer.
 **Databases and windows**
 - One database per window, with as many open at once as you like. Opening a file that is already open brings its window to the front.
 - Open and create databases, with recent files on the welcome screen.
-- Opens `.db`, `.db3`, `.sqlite`, `.sqlite3` and `.sqlcipher` files from Finder or File Explorer (double-click or **Open With**). On Windows, a file opened while Querybook is running goes to the running app.
+- Opens `.db`, `.db3`, `.sqlite`, `.sqlite3` and `.sqlcipher` files from Finder, File Explorer or the Linux file manager (double-click or **Open With**). On Windows and Linux, a file opened while Querybook is running goes to the running app.
 - Light, dark and system themes.
 
 **Encryption (SQLCipher 4)**
@@ -109,6 +109,21 @@ new release builds up its reputation.
 
 Requirements: Windows 10 or 11 (x64). WebView2 is already part of both.
 
+### Linux
+
+Download one of these from **[Releases](https://github.com/KevalKThumar/Querybook/releases/latest)**:
+
+- **Debian, Ubuntu, Mint:** `Querybook_x.y.z_amd64.deb`, then
+  `sudo apt install ./Querybook_x.y.z_amd64.deb`
+- **Fedora, openSUSE, RHEL:** `Querybook-x.y.z-1.x86_64.rpm`, then
+  `sudo dnf install ./Querybook-x.y.z-1.x86_64.rpm`
+- **Any distribution, no install:** `Querybook_x.y.z_amd64.AppImage`, then
+  `chmod +x Querybook_x.y.z_amd64.AppImage` and run it.
+
+The `.deb` and `.rpm` add Querybook to the app menu and register it for SQLite files.
+
+Requirements: x64 with glibc 2.35 or later (Ubuntu 22.04, Debian 12, Fedora 36 or newer).
+
 ### Make Querybook the default for SQLite files
 
 **macOS:** in Finder, select any `.sqlite` (or `.db`) file, press **⌘I**, choose **Querybook** under
@@ -116,6 +131,9 @@ Requirements: Windows 10 or 11 (x64). WebView2 is already part of both.
 
 **Windows:** right-click a `.sqlite` (or `.db`) file, choose **Open with → Choose another app**,
 pick **Querybook** and click **Always**. Each file extension is set separately.
+
+**Linux:** right-click a `.sqlite` (or `.db`) file, choose **Open With…** (or **Properties → Open
+With**), pick **Querybook** and set it as the default.
 
 ## Keyboard shortcuts
 
@@ -152,8 +170,13 @@ Prerequisites:
   ```powershell
   setx OPENSSL_SRC_PERL C:\Strawberry\perl\bin\perl.exe
   ```
+- **Linux (Debian/Ubuntu):** Tauri's libraries, plus Perl and a C compiler for OpenSSL:
+  ```sh
+  sudo apt install build-essential perl libwebkit2gtk-4.1-dev librsvg2-dev \
+    libayatana-appindicator3-dev libxdo-dev patchelf
+  ```
 
-Then, on either platform:
+Then, on any platform:
 
 ```sh
 # Rust (https://rustup.rs), then:
@@ -185,7 +208,16 @@ cargo tauri build
 # → target/release/querybook.exe   (runs without installing)
 ```
 
-The first Windows build compiles OpenSSL from source, which takes a few minutes.
+On Linux, build the packages:
+
+```sh
+cargo tauri build
+# → target/release/bundle/appimage/Querybook_<version>_amd64.AppImage
+# → target/release/bundle/deb/Querybook_<version>_amd64.deb
+# → target/release/bundle/rpm/Querybook-<version>-1.x86_64.rpm   (needs rpm installed)
+```
+
+The first Windows or Linux build compiles OpenSSL from source, which takes a few minutes.
 
 Stop any running `cargo tauri dev` before a release build. Its Trunk dev server
 rewrites `dist/`, which the release build packages.
@@ -239,7 +271,7 @@ Querybook is dual-licensed under either of
 - [Apache License, Version 2.0](LICENSE-APACHE)
 
 at your option. It bundles SQLCipher, SQLite, Bootstrap and Bootstrap Icons, plus OpenSSL in
-Windows builds; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Windows and Linux builds; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 Querybook is an independent project. It is not affiliated with DB Browser for SQLite
 or Zetetic (SQLCipher), and contains no code from DB Browser for SQLite.

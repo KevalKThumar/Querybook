@@ -27,8 +27,9 @@ csv = "1"
 # Canonical paths without Windows' `\\?\` prefix (a pass-through elsewhere).
 dunce = "1"
 
-# Windows: a second launch (double-click in File Explorer) hands its files to the running app.
-[target.'cfg(windows)'.dependencies]
+# Windows and Linux: a second launch (double-click in File Explorer or the file manager)
+# hands its files to the running app.
+[target.'cfg(any(windows, target_os = "linux"))'.dependencies]
 tauri-plugin-single-instance = "2"
 
 # SQLCipher 4 bundled. macOS uses CommonCrypto; elsewhere OpenSSL is built from source.
