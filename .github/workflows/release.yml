@@ -1,15 +1,24 @@
 # Builds the Windows installer and the macOS app on GitHub's machines.
 #
-# - Push a tag such as v1.0.0: builds both, then creates a draft GitHub Release
-#   with the files attached and the notes from CHANGELOG.md. Check it, then
-#   press Publish on GitHub.
-# - Run it by hand (Actions → Release → Run workflow): builds both and keeps the
-#   files as workflow artifacts. No release is created.
+# Runs only when something lands on main (work happens on branches, so pushing
+# a branch or opening a pull request runs nothing). Changes that only touch
+# Markdown files are skipped.
+#
+# - Every push to main builds both platforms and keeps the files as workflow
+#   artifacts.
+# - If the version in src-tauri/tauri.conf.json has no published release yet,
+#   the run also signs the Windows installer through SignPath (once SignPath is
+#   set up, see CONTRIBUTING.md) and creates or refreshes a draft GitHub Release
+#   vX.Y.Z with the files and the notes from CHANGELOG.md. Check it, then press
+#   Publish on GitHub; publishing creates the tag.
+# - Run it by hand (Actions → Release → Run workflow): builds both. No signing,
+#   no release.
 name: Release
 
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
+    paths-ignore: ["**.md"]
   workflow_dispatch:
 
 permissions:
@@ -25,8 +34,37 @@ env:
   TAURI_CLI_VERSION: "2.12.4"
 
 jobs:
+  plan:
+    name: Check the version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      release: ${{ steps.version.outputs.release }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Is this version released yet?
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          # This endpoint only finds published releases, never drafts.
+          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/v$version" > /dev/null 2>&1; then
+            echo "v$version is already published: build only."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          elif [ "$GITHUB_EVENT_NAME" != push ]; then
+            echo "Started by hand: build only."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "v$version isn't published yet: build, sign and draft the release."
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
     name: Build (${{ matrix.name }})
+    needs: plan
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     strategy:
@@ -43,16 +81,6 @@ jobs:
             bundles: nsis
     steps:
       - uses: actions/checkout@v7
-
-      - name: Check the tag matches the app version
-        if: startsWith(github.ref, 'refs/tags/')
-        shell: bash
-        run: |
-          version=$(node -p "require('./src-tauri/tauri.conf.json').version")
-          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
-            echo "::error::Tag $GITHUB_REF_NAME doesn't match version $version in src-tauri/tauri.conf.json"
-            exit 1
-          fi
 
       - name: Install Rust with the wasm target
         uses: dtolnay/rust-toolchain@stable
@@ -104,7 +132,7 @@ jobs:
       - name: Collect the files
         shell: bash
         run: |
-          version=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          version="${{ needs.plan.outputs.version }}"
           mkdir -p out
           if [ "$RUNNER_OS" = macOS ]; then
             cp target/release/bundle/dmg/*.dmg out/
@@ -122,36 +150,93 @@ jobs:
           path: out/*
           if-no-files-found: error
 
+  # SignPath Foundation signs the installer for free (open-source projects).
+  # Every request waits for an approver to approve it on signpath.io, so this
+  # only runs for a release, and only once the SignPath variables are set.
+  sign-windows:
+    name: Sign the Windows installer (SignPath)
+    needs: [plan, build]
+    if: needs.plan.outputs.release == 'true' && vars.SIGNPATH_ORGANIZATION_ID != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 250
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Find the unsigned installer
+        id: unsigned
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          id=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" \
+            --jq '.artifacts[] | select(.name == "querybook-Windows") | .id')
+          if [ -z "$id" ]; then echo "::error::No querybook-Windows artifact in this run"; exit 1; fi
+          echo "artifact-id=$id" >> "$GITHUB_OUTPUT"
+
+      - name: Submit to SignPath and wait for approval
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 14400 # 4 hours to approve
+          output-artifact-directory: signed
+
+      - name: Check the signed files
+        run: |
+          ls -l signed
+          ls signed/*-setup.exe > /dev/null
+
+      # Same name, so the release job picks up the signed installer.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: querybook-Windows
+          path: signed/*
+          if-no-files-found: error
+          overwrite: true
+
   release:
     name: Draft the GitHub Release
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/')
+    needs: [plan, build, sign-windows]
+    # Runs when signing succeeded, or was skipped because SignPath isn't set up yet.
+    if: ${{ !cancelled() && needs.plan.outputs.release == 'true' && needs.build.result == 'success' && needs.sign-windows.result != 'failure' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
     steps:
       - uses: actions/checkout@v7
 
       - uses: actions/download-artifact@v8
         with:
           path: out
+          pattern: querybook-*
           merge-multiple: true
 
       - name: Release notes from CHANGELOG.md
         run: |
-          version="${GITHUB_REF_NAME#v}"
-          awk -v v="[$version]" 'index($0, "## " v) == 1 {on = 1; next} /^## \[/ {if (on) exit} on' CHANGELOG.md > notes.md
+          awk -v v="[$VERSION]" 'index($0, "## " v) == 1 {on = 1; next} /^## \[/ {if (on) exit} on' CHANGELOG.md > notes.md
           if [ ! -s notes.md ]; then echo "See [CHANGELOG.md](CHANGELOG.md)." > notes.md; fi
           cat notes.md
 
-      - name: Create the draft release (or update its files)
+      - name: Create the draft release (or refresh it)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          tag="v$VERSION"
           ls -l out
-          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" out/* --clobber
+          if [ "${{ needs.sign-windows.result }}" != success ]; then
+            echo "::warning::The Windows installer is not signed (SignPath isn't set up)."
+          fi
+          if gh release view "$tag" > /dev/null 2>&1; then
+            # A draft from an earlier push of this version: point it at this commit.
+            gh release edit "$tag" --target "$GITHUB_SHA" --notes-file notes.md
+            gh release upload "$tag" out/* --clobber
           else
-            gh release create "$GITHUB_REF_NAME" out/* --draft --verify-tag \
-              --title "Querybook ${GITHUB_REF_NAME#v}" --notes-file notes.md
+            gh release create "$tag" out/* --draft --target "$GITHUB_SHA" \
+              --title "Querybook $VERSION" --notes-file notes.md
           fi

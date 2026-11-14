@@ -66,18 +66,25 @@ open an encrypted database and change or remove its key.
 
 ## Making a release
 
-The [Release workflow](.github/workflows/release.yml) builds both platforms on GitHub's machines.
+Work happens on branches; `main` only receives finished changes. The [Release workflow](.github/workflows/release.yml) runs only when something lands on `main` (pushing a branch runs nothing, and changes that only touch Markdown files are skipped). It builds the macOS `.dmg` and zipped `.app` (Apple Silicon) and the Windows `…_x64-setup.exe` on GitHub's machines.
 
-1. Bump `version` in `src-tauri/tauri.conf.json` and the three `Cargo.toml` files, and add a `## [X.Y.Z]` section to [CHANGELOG.md](CHANGELOG.md). Commit and push.
-2. Tag the commit and push the tag:
-   ```sh
-   git tag vX.Y.Z
-   git push origin vX.Y.Z
-   ```
-3. The workflow builds the macOS `.dmg` and zipped `.app` (Apple Silicon) and the Windows `…_x64-setup.exe`. It then creates a **draft** release with those files and the CHANGELOG section as its notes. The tag must match the version in `tauri.conf.json`, or the build stops.
-4. Check the draft under **Releases** on GitHub and press **Publish release**.
+1. On your branch, bump `version` in `src-tauri/tauri.conf.json` and the three `Cargo.toml` files, and add a `## [X.Y.Z]` section to [CHANGELOG.md](CHANGELOG.md).
+2. Merge the branch into `main` and push.
+3. Because `vX.Y.Z` isn't published yet, the workflow sends the Windows installer to SignPath. Approve the signing request on [signpath.io](https://app.signpath.io) (the run waits up to 4 hours).
+4. The workflow then creates a **draft** release `vX.Y.Z` with the files and the CHANGELOG section as its notes. Later pushes to `main` before you publish refresh the same draft (and ask for signing again).
+5. Check the draft under **Releases** on GitHub and press **Publish release**. Publishing creates the `vX.Y.Z` tag. Pushes to `main` after that only build.
 
 To try a build without releasing, open **Actions → Release → Run workflow**. The files are attached to the run as artifacts.
+
+### Setting up SignPath (once)
+
+Windows signing is free through the [SignPath Foundation](https://signpath.org) open-source program. Until it's set up, the workflow skips signing and drafts the release with an unsigned installer.
+
+1. Apply at [signpath.org](https://signpath.org/apply). The README's [Code signing policy](README.md#code-signing-policy) section is one of their requirements.
+2. Once approved, in SignPath: add GitHub as a trusted build system for the project, and give the artifact configuration a zip root containing a PE file `*-setup.exe` (the GitHub artifact is a zip holding the installer).
+3. In the GitHub repository settings, under **Secrets and variables → Actions**:
+   - secret `SIGNPATH_API_TOKEN`: a SignPath CI user's API token
+   - variables `SIGNPATH_ORGANIZATION_ID`, `SIGNPATH_PROJECT_SLUG` and `SIGNPATH_SIGNING_POLICY_SLUG` (the release-signing policy)
 
 To build a release locally instead:
 

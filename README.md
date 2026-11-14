@@ -99,12 +99,13 @@ Requirements: a Mac with **Apple Silicon** (M1 or later). Intel Macs are not sup
 
 ### Windows
 
-There's no prebuilt Windows release yet. [Build the installer from source](#build-from-source),
-then run `Querybook_<version>_x64-setup.exe`. It installs for the current user (no admin
-rights needed) and registers the SQLite file types.
+Download the latest `Querybook_x.y.z_x64-setup.exe` from **[Releases](https://github.com/KevalKThumar/Querybook/releases/latest)**
+and run it. It installs for the current user (no admin rights needed) and registers the
+SQLite file types.
 
-The installer isn't code-signed, so SmartScreen may say "Windows protected your PC".
-Click **More info**, then **Run anyway**.
+If SmartScreen says "Windows protected your PC", click **More info**, then **Run anyway**.
+Signed installers ([code signing policy](#code-signing-policy)) can still show this while a
+new release builds up its reputation.
 
 Requirements: Windows 10 or 11 (x64). WebView2 is already part of both.
 
@@ -214,7 +215,21 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the project layout and conventions.
 - **Adjust rows to contents** estimates text height, so very long lines can occasionally be clipped.
 - Format clears the SQL editor's undo history.
 - SQL results show at most 5,000 rows.
-- Published releases are Apple Silicon only and not notarized. Windows builds come from source and aren't code-signed.
+- macOS releases are Apple Silicon only and not notarized.
+
+## Code signing policy
+
+Free code signing for Windows is provided by [SignPath.io](https://about.signpath.io),
+with a certificate by the [SignPath Foundation](https://signpath.org).
+
+- Committers and reviewers: [Keval Thumar](https://github.com/KevalKThumar)
+- Approvers: [Keval Thumar](https://github.com/KevalKThumar)
+
+Only builds made by this repository's [Release workflow](.github/workflows/release.yml) from
+`main` are signed, and each signing request is approved by hand.
+
+**Privacy:** this program will not transfer any information to other networked systems unless
+specifically requested by the user or the person installing or operating it.
 
 ## License
 
