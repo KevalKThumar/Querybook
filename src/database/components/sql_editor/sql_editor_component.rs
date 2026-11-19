@@ -402,7 +402,12 @@ pub fn SqlEditor(
         })
     });
 
-    // Read-only inspector for the focused result cell.
+    // Read-only inspector for the focused result cell; selecting a cell (click or arrows) opens it.
+    Effect::new(move |_| {
+        if selection.with(|s| matches!(s, GridSelection::Cells { .. })) && !inspector_open.get_untracked() {
+            inspector_open.set(true);
+        }
+    });
     let focus = Memo::new(move |_| selection.with(|s| s.focus()));
     let inspected = Memo::new(move |_| focus.get().and_then(|at| cell_at.run(at)));
     let inspected_column =

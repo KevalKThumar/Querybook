@@ -25,8 +25,8 @@ use crate::database::database_constant::{
     SQL_REVERT_CHANGES, SQL_TABLE_COLUMNS, STORAGE_HISTORY_PREFIX, STORAGE_RECENT_FILES, STORAGE_SNIPPETS,
 };
 use crate::database::database_structure::{
-    ColumnInfo, CsvPreviewRequest, DatabaseService, ExportCsvRequest, ExportItem, ExportSqlRequest, ForeignKey,
-    HistoryRequest, ImportCsvRequest, KeyRequest,
+    ColumnInfo, CsvPreviewRequest, DatabaseService, EncryptionRequest, ExportCsvRequest, ExportItem, ExportSqlRequest,
+    ForeignKey, HistoryRequest, ImportCsvRequest, KeyRequest,
     OpenDialogRequest, PathRequest, PickFileRequest, SchemaObject, ScriptRequest, SqlRequest,
 };
 use crate::shared::services::local_storage_service::LocalStorageService;
@@ -89,9 +89,10 @@ impl DatabaseService {
     }
 
     // Keval Thumar
-    // Encrypt, re-key, or (key = None) decrypt the open database.
-    pub async fn set_encryption(key: Option<KeyInput>) -> Result<SessionInfo, AppError> {
-        OsBridge::invoke(CMD_SET_ENCRYPTION, &KeyRequest { key }).await
+    // Encrypt, re-key, or (key = None) decrypt the open database. An encrypted
+    // one needs its `current` key.
+    pub async fn set_encryption(current: &str, key: Option<KeyInput>) -> Result<SessionInfo, AppError> {
+        OsBridge::invoke(CMD_SET_ENCRYPTION, &EncryptionRequest { current, key }).await
     }
 
     pub async fn query(sql: &str, params: &[Cell], toast: ToastService) -> Option<ResultSet> {

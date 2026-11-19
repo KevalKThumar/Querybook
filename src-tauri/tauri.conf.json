@@ -53,6 +53,13 @@
         "mimeType": "application/vnd.sqlite3",
         "role": "Editor",
         "rank": "Alternate"
+      },
+      {
+        "ext": [],
+        "contentTypes": ["public.data"],
+        "name": "Database (any extension)",
+        "role": "Editor",
+        "rank": "Alternate"
       }
     ]
   }

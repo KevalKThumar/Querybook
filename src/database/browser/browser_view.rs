@@ -59,7 +59,7 @@ pub fn browser_view(
     on_import_sql: Callback<()>,
     on_export_sql: Callback<Option<String>>,
     on_theme: Callback<()>,
-    on_cipher_submit: Callback<Option<KeyInput>>,
+    on_cipher_submit: Callback<(Option<KeyInput>, String)>,
     on_cipher_cancel: Callback<()>,
 ) -> impl IntoView {
     let disconnected = move || !connected.get();

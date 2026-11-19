@@ -20,10 +20,12 @@ pub fn CipherDialog(
     /// Inline error (wrong key, mismatch, …) — owned by the caller so it can set backend errors.
     error: RwSignal<Option<String>>,
     #[prop(into)] busy: Signal<bool>,
-    /// `Some(key)` to unlock / encrypt; `None` = "don't encrypt" (Create) or "remove encryption" (Change).
-    on_submit: Callback<Option<KeyInput>>,
+    /// (`Some(key)` to unlock / encrypt, `None` = "don't encrypt" (Create) or "remove encryption" (Change);
+    /// the current key as typed, needed to change or remove an existing one).
+    on_submit: Callback<(Option<KeyInput>, String)>,
     on_cancel: Callback<()>,
 ) -> impl IntoView {
+    let current = RwSignal::new(String::new());
     let password = RwSignal::new(String::new());
     let confirm = RwSignal::new(String::new());
     let raw_key = RwSignal::new(false);
@@ -31,6 +33,7 @@ pub fn CipherDialog(
     // Fresh fields every time the dialog opens.
     Effect::new(move |_| {
         if open.get() {
+            current.set(String::new());
             password.set(String::new());
             confirm.set(String::new());
             raw_key.set(false);
@@ -39,6 +42,8 @@ pub fn CipherDialog(
 
     // A new passphrase is typed twice; unlocking and raw keys aren't.
     let needs_confirm = Signal::derive(move || !raw_key.get() && mode.get() != CipherMode::Unlock);
+    // Changing or removing an existing key asks for it first.
+    let needs_current = Signal::derive(move || mode.get() == CipherMode::Change { encrypted: true });
     let title = Signal::derive(move || match mode.get() {
         CipherMode::Unlock => format!("Unlock {}", file_name.get()),
         CipherMode::Create => "Encrypt the new database?".to_string(),
@@ -48,7 +53,7 @@ pub fn CipherDialog(
     let intro = Signal::derive(move || match mode.get() {
         CipherMode::Unlock => "This database is encrypted. Enter the key used to encrypt it.",
         CipherMode::Create => "Set a password to create it as a SQLCipher database, or continue without encryption.",
-        CipherMode::Change { encrypted: true } => "Enter a new key, or remove encryption. The database is rewritten to a verified copy first.",
+        CipherMode::Change { encrypted: true } => "Enter the current password, then a new key, or remove encryption. The database is rewritten to a verified copy first.",
         CipherMode::Change { encrypted: false } => "Enter a key to encrypt this database. It is rewritten to a verified copy first.",
     });
 
@@ -68,11 +73,11 @@ pub fn CipherDialog(
             return;
         }
         error.set(None);
-        on_submit.run(Some(key));
+        on_submit.run((Some(key), current.get_untracked()));
     });
     let on_without_key = Callback::new(move |_: ()| {
         error.set(None);
-        on_submit.run(None);
+        on_submit.run((None, current.get_untracked()));
     });
 
     cipher_dialog_view(
@@ -80,6 +85,8 @@ pub fn CipherDialog(
         mode,
         title,
         intro,
+        current,
+        needs_current,
         password,
         confirm,
         raw_key,

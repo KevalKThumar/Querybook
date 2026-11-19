@@ -162,13 +162,13 @@ pub fn Browser() -> impl IntoView {
         cipher_error.set(None);
         cipher_open.set(true);
     });
-    let on_cipher_submit = Callback::new(move |key: Option<KeyInput>| match cipher_mode.get_untracked() {
+    let on_cipher_submit = Callback::new(move |(key, current): (Option<KeyInput>, String)| match cipher_mode.get_untracked() {
         CipherMode::Unlock | CipherMode::Create => connect.run(key),
         CipherMode::Change { .. } => {
             let removing = key.is_none();
             cipher_busy.set(true);
             spawn_local(async move {
-                match DatabaseService::set_encryption(key).await {
+                match DatabaseService::set_encryption(&current, key).await {
                     Ok(i) => {
                         info.set(Some(i));
                         cipher_open.set(false);

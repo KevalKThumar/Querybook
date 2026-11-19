@@ -83,13 +83,18 @@ async fn session_info(window: WebviewWindow, reg: State<'_, Registry>) -> Res<Se
 /// Native Open (or New = save dialog) picker, then [`open_in`].
 #[tauri::command]
 async fn open_dialog(app: AppHandle, window: WebviewWindow, create: bool) -> Res<OpenOutcome> {
-    let dialog = app
-        .dialog()
-        .file()
-        .set_parent(&window)
-        .add_filter("SQLite database", &["db", "sqlite", "sqlite3", "db3", "sqlcipher"])
-        .add_filter("All files", &["*"]);
-    let picked = if create { dialog.set_file_name("database.db").blocking_save_file() } else { dialog.blocking_pick_file() };
+    let dialog = app.dialog().file().set_parent(&window);
+    // Open takes any file: a database can have any extension (.logger, .veroval, none); its header
+    // decides. No filters at all, since macOS treats "*" as a literal extension and GTK as "*.*".
+    let picked = if create {
+        dialog
+            .add_filter("SQLite database", &["db", "sqlite", "sqlite3", "db3", "sqlcipher"])
+            .add_filter("All files", &["*"])
+            .set_file_name("database.db")
+            .blocking_save_file()
+    } else {
+        dialog.blocking_pick_file()
+    };
     let Some(path) = picked_path(picked)? else { return Ok(OpenOutcome::Cancelled) };
     if create && path.exists() {
         // The save dialog already asked the user to confirm replacing it.
@@ -250,11 +255,16 @@ async fn cancel(window: WebviewWindow, reg: State<'_, Registry>) -> Res<()> {
     Ok(())
 }
 
-/// `key = None` removes encryption.
+/// `key = None` removes encryption; `current` is the open database's key ("" when it has none).
 #[tauri::command]
-async fn set_encryption(window: WebviewWindow, reg: State<'_, Registry>, key: Option<KeyInput>) -> Res<SessionInfo> {
+async fn set_encryption(
+    window: WebviewWindow,
+    reg: State<'_, Registry>,
+    current: String,
+    key: Option<KeyInput>,
+) -> Res<SessionInfo> {
     let s = reg.session(window.label())?;
-    blocking(move || s.set_encryption(key)).await
+    blocking(move || s.set_encryption(&current, key)).await
 }
 
 /// `kind` is "csv" or "sql".

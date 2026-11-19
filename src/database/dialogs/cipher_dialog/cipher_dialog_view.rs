@@ -15,6 +15,8 @@ pub fn cipher_dialog_view(
     mode: Signal<CipherMode>,
     title: Signal<String>,
     intro: Signal<&'static str>,
+    current: RwSignal<String>,
+    needs_current: Signal<bool>,
     password: RwSignal<String>,
     confirm: RwSignal<String>,
     raw_key: RwSignal<bool>,
@@ -33,8 +35,15 @@ pub fn cipher_dialog_view(
     view! {
         <DialogShell open on_close=on_cancel class="cipher-dialog">
             {
+                // The current-password field, when shown, comes first and takes focus.
                 let first = NodeRef::<Input>::new();
-                first.on_load(|el| {
+                first.on_load(move |el| {
+                    if !needs_current.get_untracked() {
+                        let _ = el.focus();
+                    }
+                });
+                let current_input = NodeRef::<Input>::new();
+                current_input.on_load(|el| {
                     let _ = el.focus();
                 });
                 view! {
@@ -45,7 +54,20 @@ pub fn cipher_dialog_view(
                     <div class="shell-body">
                         <p class="cipher-intro">{move || intro.get()}</p>
 
-                        <label class="form-label cipher-label">"Password"</label>
+                        <Show when=move || needs_current.get() fallback=|| ()>
+                            <label class="form-label cipher-label">"Current password"</label>
+                            <input
+                                node_ref=current_input
+                                class="form-control form-control-sm mb-2"
+                                type="password"
+                                autocomplete="off"
+                                prop:value=move || current.get()
+                                on:input=move |ev| current.set(event_target_value(&ev))
+                                on:keydown=on_enter
+                            />
+                        </Show>
+
+                        <label class="form-label cipher-label">{move || if needs_current.get() { "New password" } else { "Password" }}</label>
                         <div class="input-group input-group-sm mb-2">
                             <input
                                 node_ref=first
