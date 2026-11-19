@@ -913,13 +913,13 @@ mod tests {
         assert!(open_conn(file, Some(&pw("one"))).is_ok());
 
         // Change the key: the history moves to the new key.
-        s.set_encryption(Some(pw("two"))).unwrap();
+        s.set_encryption("one", Some(pw("two"))).unwrap();
         assert_eq!(open_conn(file, Some(&pw("one"))).unwrap_err().kind, ErrorKind::WrongKey);
         assert!(open_conn(file, Some(&pw("two"))).is_ok());
         assert_eq!(history(&s).total, 1);
 
         // Remove encryption: a plain history, still there.
-        s.set_encryption(None).unwrap();
+        s.set_encryption("two", None).unwrap();
         assert_eq!(file_kind(file), FileKind::Plain);
         assert_eq!(history(&s).total, 1);
         assert_eq!(history(&s).entries[0].tables[0].rows[0].columns[0].new, text("top secret"));

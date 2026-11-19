@@ -255,11 +255,16 @@ async fn cancel(window: WebviewWindow, reg: State<'_, Registry>) -> Res<()> {
     Ok(())
 }
 
-/// `key = None` removes encryption.
+/// `key = None` removes encryption; `current` is the open database's key ("" when it has none).
 #[tauri::command]
-async fn set_encryption(window: WebviewWindow, reg: State<'_, Registry>, key: Option<KeyInput>) -> Res<SessionInfo> {
+async fn set_encryption(
+    window: WebviewWindow,
+    reg: State<'_, Registry>,
+    current: String,
+    key: Option<KeyInput>,
+) -> Res<SessionInfo> {
     let s = reg.session(window.label())?;
-    blocking(move || s.set_encryption(key)).await
+    blocking(move || s.set_encryption(&current, key)).await
 }
 
 /// `kind` is "csv" or "sql".

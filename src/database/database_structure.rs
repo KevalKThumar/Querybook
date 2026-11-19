@@ -274,6 +274,13 @@ pub struct KeyRequest {
 }
 
 #[derive(Serialize)]
+pub struct EncryptionRequest<'a> {
+    /// The open database's key, as typed ("" when it isn't encrypted).
+    pub current: &'a str,
+    pub key: Option<KeyInput>,
+}
+
+#[derive(Serialize)]
 pub struct SqlRequest<'a> {
     pub sql: &'a str,
     pub params: &'a [Cell],

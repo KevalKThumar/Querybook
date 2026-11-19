@@ -400,10 +400,20 @@ impl Session {
 
     /// Encrypt, re-key or decrypt (key = None) via `sqlcipher_export` into a temp
     /// file next to the original, verified, then atomically renamed over it.
-    pub fn set_encryption(&self, key: Option<KeyInput>) -> Result<SessionInfo, AppError> {
+    /// An encrypted database also needs its `current` key.
+    pub fn set_encryption(&self, current: &str, key: Option<KeyInput>) -> Result<SessionInfo, AppError> {
         let path = self.path.clone().ok_or_else(no_db)?;
         if let Some(k) = &key {
             k.validate().map_err(invalid)?;
+        }
+        // Typed the way it was entered to unlock: a passphrase exactly, a raw key as hex in any case.
+        let current_ok = match &*lock(&self.key) {
+            None => true,
+            Some(KeyInput::Passphrase(p)) => p == current,
+            Some(KeyInput::RawHex(h)) => h.eq_ignore_ascii_case(current.trim()),
+        };
+        if !current_ok {
+            return Err(AppError::new(ErrorKind::WrongKey, "The current password is wrong."));
         }
         let mut guard = lock(&self.conn);
         let conn = guard.as_ref().ok_or_else(no_db)?;
@@ -555,29 +565,47 @@ pub mod tests {
         })
         .unwrap();
 
-        // plain -> encrypted
-        assert!(s.set_encryption(Some(pw("one"))).unwrap().encrypted);
+        // plain -> encrypted: there's no current key to give
+        assert!(s.set_encryption("", Some(pw("one"))).unwrap().encrypted);
         assert_eq!(file_kind(&path), FileKind::Encrypted);
         assert_eq!(kind_of(open_conn(&path, None)), ErrorKind::NeedsKey);
         assert_eq!(count(&open_conn(&path, Some(&pw("one"))).unwrap()), 3);
 
+        // a wrong current key changes nothing
+        assert_eq!(s.set_encryption("nope", Some(pw("two"))).unwrap_err().kind, ErrorKind::WrongKey);
+        assert_eq!(count(&open_conn(&path, Some(&pw("one"))).unwrap()), 3);
+
         // change key
-        s.set_encryption(Some(pw("two"))).unwrap();
+        s.set_encryption("one", Some(pw("two"))).unwrap();
         assert_eq!(kind_of(open_conn(&path, Some(&pw("one")))), ErrorKind::WrongKey);
         let c = open_conn(&path, Some(&pw("two"))).unwrap();
         assert_eq!(count(&c), 3);
         assert_eq!(c.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0)).unwrap(), 7);
         drop(c);
 
+        // removing needs the current key too
+        assert_eq!(s.set_encryption("", None).unwrap_err().kind, ErrorKind::WrongKey);
+        assert_eq!(file_kind(&path), FileKind::Encrypted);
+
         // encrypted -> plain; the live session still works
-        assert!(!s.set_encryption(None).unwrap().encrypted);
+        assert!(!s.set_encryption("two", None).unwrap().encrypted);
         assert_eq!(file_kind(&path), FileKind::Plain);
         assert_eq!(s.with_conn(|c| Ok(count(c))).unwrap(), 3);
 
         // refuses while changes are pending
         s.with_conn(|c| c.execute_batch("SAVEPOINT querybook; INSERT INTO t VALUES (4);").map_err(sql_err)).unwrap();
         assert!(s.has_pending());
-        assert_eq!(s.set_encryption(Some(pw("x"))).unwrap_err().kind, ErrorKind::Invalid);
+        assert_eq!(s.set_encryption("", Some(pw("x"))).unwrap_err().kind, ErrorKind::Invalid);
+    }
+
+    /// A raw key is checked as hex, in any case.
+    #[test]
+    fn current_raw_key_ignores_case() {
+        let raw = "2DD29CA851E7B56E4697B0E1F08507293D761A05CE4D1B628663F411A8086D99";
+        let s = Session::new(Some(tmp_dir("raw-current").join("r.db")));
+        s.connect(Some(KeyInput::RawHex(raw.into()))).unwrap();
+        assert_eq!(s.set_encryption("2dd29ca8", None).unwrap_err().kind, ErrorKind::WrongKey);
+        assert!(!s.set_encryption(&format!(" {} ", raw.to_lowercase()), None).unwrap().encrypted);
     }
 
     /// Opens a file made by another SQLCipher 4 tool (DB4S, sqlcipher CLI):
