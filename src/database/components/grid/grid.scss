@@ -26,9 +26,6 @@
   cursor: pointer;
 }
 
-// Widths come inline from `--qw-<column>` (column resize), not the mixin's fixed basis.
-.qgrid-th, .qgrid-filter, .qgrid-cell { flex: none; }
-
 .qgrid-th {
   @include g.grid-cell;
   position: relative;
@@ -86,6 +83,10 @@
   &.selected { background: $bg-selected; }
   &.focus { box-shadow: inset 0 0 0 2px $primary; }
 }
+
+// Widths come inline from `--qw-<column>` (column resize), not the mixin's fixed basis.
+// Must follow the `grid-cell` includes above: their `flex: 0 0 $width-column` would win otherwise.
+.qgrid-th, .qgrid-filter, .qgrid-cell { flex: none; }
 
 .qgrid-text {
   overflow: hidden;
