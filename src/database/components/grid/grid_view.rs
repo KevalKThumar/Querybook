@@ -139,7 +139,7 @@ pub fn grid_view(
                                         <input
                                             class="form-control form-control-sm"
                                             placeholder="Filter"
-                                            title="Text = contains · prefix with = <> > < >= <= to compare"
+                                            title="Text = contains · prefix with = <> != > < >= <= to compare"
                                             prop:value=move || filters.with(|f| f.get(c).cloned().unwrap_or_default())
                                             on:keydown=move |ev| ev.stop_propagation()
                                             on:change=move |ev| {

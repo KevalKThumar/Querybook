@@ -608,6 +608,17 @@ pub mod tests {
         assert!(!s.set_encryption(&format!(" {} ", raw.to_lowercase()), None).unwrap().encrypted);
     }
 
+    /// The column filter's "not equal": status 1,2,3,5,6,8,8 without the 8s is 5 rows.
+    #[test]
+    fn not_equal_filter_excludes_value() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("CREATE TABLE t(status INTEGER); INSERT INTO t VALUES (1),(2),(3),(5),(6),(8),(8);").unwrap();
+        for filter in ["!=8", "<>8", "<> 8"] {
+            let (sql, params) = sql::count_rows("t", &[("status".into(), filter.into())]);
+            assert_eq!(query(&conn, &sql, &params).unwrap().rows[0][0], Cell::Int("5".into()), "{filter}");
+        }
+    }
+
     /// Opens a file made by another SQLCipher 4 tool (DB4S, sqlcipher CLI):
     /// `QB_INTEROP_DB=path QB_INTEROP_KEY=pw cargo test -p querybook -- --ignored`
     #[test]
