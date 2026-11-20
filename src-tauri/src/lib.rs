@@ -169,6 +169,46 @@ fn on_second_instance(app: &AppHandle, argv: Vec<String>, cwd: String) {
     tauri::async_runtime::spawn(async move { open_external(&app, paths) });
 }
 
+/// A database that opened goes on the system's recent documents, on the main thread where the
+/// system keeps them. Picking one there opens it the way the file manager does.
+fn note_recent(app: &AppHandle, path: Option<String>) {
+    if let Some(path) = path {
+        let _ = app.run_on_main_thread(move || add_recent_document(&path));
+    }
+}
+
+/// macOS: the Dock icon's menu and Apple menu › Recent Items (picking one: `RunEvent::Opened`).
+#[cfg(target_os = "macos")]
+fn add_recent_document(path: &str) {
+    if let (Some(mtm), Some(url)) = (objc2::MainThreadMarker::new(), objc2_foundation::NSURL::from_file_path(path)) {
+        objc2_app_kit::NSDocumentController::sharedDocumentController(mtm).noteNewRecentDocumentURL(&url);
+    }
+}
+
+/// Windows: Recent in the Jump List of the taskbar and Start menu icons, for the file types
+/// Querybook is registered for (.db, .sqlite, …). Picking one launches Querybook again, and the
+/// single-instance plugin hands the file to the running app.
+#[cfg(windows)]
+fn add_recent_document(path: &str) {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::UI::Shell::{SHARD_PATHW, SHAddToRecentDocs};
+    let wide: Vec<u16> = std::ffi::OsStr::new(path).encode_wide().chain([0]).collect();
+    unsafe { SHAddToRecentDocs(SHARD_PATHW as u32, wide.as_ptr().cast()) };
+}
+
+/// Linux: the desktop's recently used files (Files › Recent, file pickers, KDE's task manager
+/// menu). GNOME's dash and the Ubuntu Dock have no recent-files menu.
+#[cfg(target_os = "linux")]
+fn add_recent_document(path: &str) {
+    use gtk::prelude::RecentManagerExt;
+    if let (Some(manager), Ok(uri)) = (gtk::RecentManager::default(), gtk::glib::filename_to_uri(path, None)) {
+        manager.add_item(&uri);
+    }
+}
+
+#[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
+fn add_recent_document(_: &str) {}
+
 const SAVE: &str = "Save";
 const DONT_SAVE: &str = "Don't Save";
 
@@ -206,9 +246,12 @@ fn confirm_close(window: &tauri::Window, session: std::sync::Arc<Session>) {
 }
 
 #[tauri::command]
-async fn connect(window: WebviewWindow, reg: State<'_, Registry>, key: Option<KeyInput>) -> Res<SessionInfo> {
+async fn connect(app: AppHandle, window: WebviewWindow, reg: State<'_, Registry>, key: Option<KeyInput>) -> Res<SessionInfo> {
     let s = reg.session(window.label())?;
-    blocking(move || s.connect(key)).await
+    // Only once it's open: an encrypted file waiting at the Unlock prompt isn't listed.
+    let info = blocking(move || s.connect(key)).await?;
+    note_recent(&app, info.path.clone());
+    Ok(info)
 }
 
 #[tauri::command]
