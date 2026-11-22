@@ -33,7 +33,8 @@ dunce = "1"
 tauri-plugin-single-instance = "2"
 
 # SQLCipher 4 bundled. macOS uses CommonCrypto; elsewhere OpenSSL is built from source.
+# `hooks`: the authorizer that limits what an imported SQL script may run.
 [target.'cfg(target_os = "macos")'.dependencies]
-rusqlite = { version = "0.41", features = ["bundled-sqlcipher"] }
+rusqlite = { version = "0.41", features = ["bundled-sqlcipher", "hooks"] }
 [target.'cfg(not(target_os = "macos"))'.dependencies]
-rusqlite = { version = "0.41", features = ["bundled-sqlcipher-vendored-openssl"] }
+rusqlite = { version = "0.41", features = ["bundled-sqlcipher-vendored-openssl", "hooks"] }
