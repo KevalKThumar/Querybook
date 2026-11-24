@@ -68,17 +68,20 @@ open an encrypted database and change or remove its key.
 
 Work happens on branches; `main` only receives finished changes. The [Release workflow](.github/workflows/release.yml) runs only when something lands on `main` (pushing a branch runs nothing, and changes that only touch Markdown files are skipped). It builds the macOS `.dmg` and zipped `.app` (Apple Silicon), the Windows `…_x64-setup.exe`, and the Linux `.AppImage`, `.deb` and `.rpm` (x64) on GitHub's machines.
 
-1. On your branch, bump `version` in `src-tauri/tauri.conf.json` and the three `Cargo.toml` files, and add a `## [X.Y.Z]` section to [CHANGELOG.md](CHANGELOG.md).
-2. Merge the branch into `main` and push.
-3. Because `vX.Y.Z` isn't published yet, the workflow sends the Windows installer to SignPath. Approve the signing request on [signpath.io](https://app.signpath.io) (the run waits up to 4 hours).
-4. The workflow then creates a **draft** release `vX.Y.Z` with the files and the CHANGELOG section as its notes. Later pushes to `main` before you publish refresh the same draft (and ask for signing again).
-5. Check the draft under **Releases** on GitHub and press **Publish release**. Publishing creates the `vX.Y.Z` tag. Pushes to `main` after that only build.
+Every merge into `main` (except one that only touches Markdown) is a release; there is no version to bump by hand.
+
+1. The workflow takes the highest `vX.Y.Z` tag and adds one to the patch number (`v1.1.2` → `1.1.3`), and builds with that version.
+   - For a minor or major release, raise `version` in `src-tauri/tauri.conf.json` (and the three `Cargo.toml` files) on your branch. A version there that is higher than the next patch is used as is; later merges continue from it.
+   - The repo's version files are not updated by the workflow (`main` only takes merges from its owner), so they can lag behind the releases.
+2. Optional: add a `## [X.Y.Z]` section for that version to [CHANGELOG.md](CHANGELOG.md). It becomes the release notes. Without one, GitHub writes the notes from the merged pull requests.
+3. Once SignPath is set up, the workflow sends the Windows installer to it. Approve the signing request on [signpath.io](https://app.signpath.io) (the run waits up to 4 hours). Until then the installer is published unsigned.
+4. The workflow publishes the release `vX.Y.Z` with the files, which creates the tag. If a build or signing fails, nothing is published, and the next merge tries the same version again.
 
 To try a build without releasing, open **Actions → Release → Run workflow**. The files are attached to the run as artifacts.
 
 ### Setting up SignPath (once)
 
-Windows signing is free through the [SignPath Foundation](https://signpath.org) open-source program. Until it's set up, the workflow skips signing and drafts the release with an unsigned installer.
+Windows signing is free through the [SignPath Foundation](https://signpath.org) open-source program. Until it's set up, the workflow skips signing and publishes the release with an unsigned installer.
 
 1. Apply at [signpath.org](https://signpath.org/apply). The README's [Code signing policy](README.md#code-signing-policy) section is one of their requirements.
 2. Once approved, in SignPath: add GitHub as a trusted build system for the project, and give the artifact configuration a zip root containing a PE file `*-setup.exe` (the GitHub artifact is a zip holding the installer).

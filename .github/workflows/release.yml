@@ -5,15 +5,17 @@
 # a branch or opening a pull request runs nothing). Changes that only touch
 # Markdown files are skipped.
 #
-# - Every push to main builds all three platforms and keeps the files as
-#   workflow artifacts.
-# - If the version in src-tauri/tauri.conf.json has no published release yet,
-#   the run also signs the Windows installer through SignPath (once SignPath is
-#   set up, see CONTRIBUTING.md) and creates or refreshes a draft GitHub Release
-#   vX.Y.Z with the files and the notes from CHANGELOG.md. Check it, then press
-#   Publish on GitHub; publishing creates the tag.
-# - Run it by hand (Actions → Release → Run workflow): builds all three. No signing,
-#   no release.
+# - Every push to main is a release: the version is the highest vX.Y.Z tag with
+#   the patch number + 1, or the version in src-tauri/tauri.conf.json if that is
+#   higher (raise it on a branch for a minor or major release). The run builds all
+#   three platforms with that version, signs the Windows installer through
+#   SignPath (once SignPath is set up, see CONTRIBUTING.md) and publishes the
+#   GitHub Release vX.Y.Z, which creates the tag. Notes: the CHANGELOG.md section
+#   for that version if there is one, otherwise GitHub's notes from the merged PRs.
+# - Nothing is committed back: main is closed to the workflow's token, so the
+#   repo's version files only move when someone raises them.
+# - Run it by hand (Actions → Release → Run workflow): builds all three with the
+#   next version. No signing, no release.
 name: Release
 
 on:
@@ -44,23 +46,22 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Is this version released yet?
+      - name: Next version
         id: version
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
-          version=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          floor=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          # Every vX.Y.Z tag counts, even one whose release is still a draft: its number is taken.
+          last=$(git ls-remote --tags --refs origin 'v*' | sed 's|.*refs/tags/v||' \
+            | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)
+          IFS=. read -r major minor patch <<< "${last:-0.0.0}"
+          version=$(printf '%s\n' "$major.$minor.$((patch + 1))" "$floor" | sort -V | tail -n 1)
+          echo "Last tag v${last:-none}, tauri.conf.json $floor: this is $version."
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          # This endpoint only finds published releases, never drafts.
-          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/v$version" > /dev/null 2>&1; then
-            echo "v$version is already published: build only."
-            echo "release=false" >> "$GITHUB_OUTPUT"
-          elif [ "$GITHUB_EVENT_NAME" != push ]; then
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          else
             echo "Started by hand: build only."
             echo "release=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "v$version isn't published yet: build, sign and draft the release."
-            echo "release=true" >> "$GITHUB_OUTPUT"
           fi
 
   build:
@@ -138,11 +139,15 @@ jobs:
             libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev \
             libayatana-appindicator3-dev libxdo-dev patchelf rpm
 
+      # The version goes in here, not in tauri.conf.json: bundle names and metadata follow it.
       - name: Build
         shell: bash
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
         run: |
           trunk --version
-          npx --yes "@tauri-apps/cli@$TAURI_CLI_VERSION" build --bundles ${{ matrix.bundles }}
+          npx --yes "@tauri-apps/cli@$TAURI_CLI_VERSION" build --bundles ${{ matrix.bundles }} \
+            --config "{\"version\":\"$VERSION\"}"
 
       - name: Collect the files
         shell: bash
@@ -218,7 +223,7 @@ jobs:
           overwrite: true
 
   release:
-    name: Draft the GitHub Release
+    name: Publish the GitHub Release
     needs: [plan, build, sign-windows]
     # Runs when signing succeeded, or was skipped because SignPath isn't set up yet.
     if: ${{ !cancelled() && needs.plan.outputs.release == 'true' && needs.build.result == 'success' && needs.sign-windows.result != 'failure' }}
@@ -239,10 +244,9 @@ jobs:
       - name: Release notes from CHANGELOG.md
         run: |
           awk -v v="[$VERSION]" 'index($0, "## " v) == 1 {on = 1; next} /^## \[/ {if (on) exit} on' CHANGELOG.md > notes.md
-          if [ ! -s notes.md ]; then echo "See [CHANGELOG.md](CHANGELOG.md)." > notes.md; fi
-          cat notes.md
+          if [ -s notes.md ]; then cat notes.md; else echo "No CHANGELOG section for $VERSION: GitHub writes the notes."; fi
 
-      - name: Create the draft release (or refresh it)
+      - name: Publish the release (creates the tag)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -251,11 +255,12 @@ jobs:
           if [ "${{ needs.sign-windows.result }}" != success ]; then
             echo "::warning::The Windows installer is not signed (SignPath isn't set up)."
           fi
+          if [ -s notes.md ]; then notes=(--notes-file notes.md); else notes=(--generate-notes); fi
           if gh release view "$tag" > /dev/null 2>&1; then
-            # A draft from an earlier push of this version: point it at this commit.
-            gh release edit "$tag" --target "$GITHUB_SHA" --notes-file notes.md
+            # A draft left by a run that failed while uploading: finish it.
             gh release upload "$tag" out/* --clobber
+            gh release edit "$tag" --target "$GITHUB_SHA" --draft=false
           else
-            gh release create "$tag" out/* --draft --target "$GITHUB_SHA" \
-              --title "Querybook $VERSION" --notes-file notes.md
+            gh release create "$tag" out/* --target "$GITHUB_SHA" \
+              --title "Querybook $VERSION" "${notes[@]}"
           fi

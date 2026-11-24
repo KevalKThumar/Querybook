@@ -2,6 +2,14 @@
 
 All notable changes to Querybook are listed here. Versions follow [Semantic Versioning](https://semver.org).
 
+## [1.1.3] — 2026-11-24
+
+### Added
+- Opened databases go on the system's recent documents, and picking one there opens it in Querybook. An encrypted database is listed once it is unlocked.
+  - macOS: the Dock icon's menu and Apple menu › Recent Items.
+  - Windows: Recent in the taskbar and Start menu Jump List.
+  - Linux: the desktop's recently used files (Files › Recent, file pickers, KDE's task manager). GNOME's dash and the Ubuntu Dock have no recent-files menu.
+
 ## [1.1.2] — 2026-11-14
 
 ### Added
@@ -74,6 +82,7 @@ First public release, for macOS on Apple Silicon.
 - Database tab: file facts, the foreign-key enforcement switch, and integrity, quick and foreign-key checks, optimize and VACUUM.
 - Light, dark and system themes.
 
+[1.1.3]: https://github.com/KevalKThumar/Querybook/releases/tag/v1.1.3
 [1.1.2]: https://github.com/KevalKThumar/Querybook/releases/tag/v1.1.2
 [1.1.0]: https://github.com/KevalKThumar/Querybook/releases/tag/v1.1.0
 [1.0.0]: https://github.com/KevalKThumar/Querybook/releases/tag/v1.0.0
