@@ -3,12 +3,14 @@
 # (npm install -g agent-desktop). Drives the real UI on a throwaway database: browse,
 # edit + Write Changes, Revert, the SQL editor, History, integrity check, column resize,
 # column filters (= <> != contains), the cell inspector opening on click, the close
-# prompt, opening any extension (File › Open, Finder, Open With), and encrypt / unlock /
-# change / remove encryption (change and remove need the current password).
+# prompt, opening any extension (File › Open, Finder, Open With), the Dock icon's recent
+# databases, and encrypt / unlock / change / remove encryption (change and remove need the
+# current password).
 #
 # It takes keyboard focus for about a minute (WebView text fields only take real
 # keystrokes), so don't type while it runs. It quits Querybook at the end. The
-# throwaway database stays in Recent files, and its change history in the app data.
+# throwaway databases stay in Recent files (the app's and the Dock's), and their change
+# history in the app data.
 #
 #   scripts/e2e-macos.sh                          # the release bundle in target/
 #   scripts/e2e-macos.sh /Applications/Querybook.app
@@ -313,6 +315,57 @@ check "Info.plist: the SQLite extensions are still declared" \
 LSR=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
 check "Launch Services registered Querybook for any data file" \
   "$("$LSR" -dump 2>/dev/null | awk -v p=" $APP (" 'index($0, "path:") == 1 && index($0, p) {f = 1} f && /^claimed UTIs:/ {print ($0 ~ /public\.data/); exit}')" 1
+
+# ── Dock: recent databases ──
+# Querybook's Dock item: the last one (a pinned copy that isn't running comes first).
+dock_item() { ad find --app Dock --role dockitem --name Querybook | jq -r '.data.matches[-1].ref_id // empty'; }
+# The names in the Dock icon's menu: the app's recent documents, then its open windows (titled by file name).
+dock_menu() {
+  local r; r=$(dock_item); [ -n "$r" ] || return
+  ad right-click "$r" >/dev/null; sleep 0.6
+  ad snapshot --app Dock | jq -r '.. | objects | select(.role == "menuitem") | .name // empty'
+  ad --headed press escape >/dev/null
+}
+# Does the menu list $1 as a recent document, apart from an open window of that name? Asked a few
+# times: the list updates asynchronously.
+dock_lists() {
+  for _ in 1 2 3 4 5; do
+    [ $(($(dock_menu | grep -cxF "$1") - $(windows | tr ',' '\n' | grep -cxF "$1"))) -gt 0 ] && { echo true; return; }
+    sleep 1
+  done
+  echo false
+}
+# Pick $1 in the Dock icon's menu, with a physical click: an accessibility press on its item goes stale.
+dock_pick() {
+  local r xy
+  for _ in 1 2 3; do
+    r=$(dock_item); [ -n "$r" ] && ad right-click "$r" >/dev/null; sleep 0.6
+    xy=$(ad snapshot --app Dock --include-bounds | jq -r --arg n "$1" \
+      'first(.. | objects | select(.role == "menuitem" and .name == $n and .bounds.width > 0) | "\(.bounds.x + 40 | round),\(.bounds.y + .bounds.height / 2 | round)") // empty')
+    [ -n "$xy" ] && { ad --headed mouse-click --xy="$xy" >/dev/null; return 0; }
+    ad --headed press escape >/dev/null; sleep 0.5
+  done
+  echo "  (the Dock's menu doesn't list $1)"
+}
+wait_window() { for _ in $(seq 20); do [[ ,$(windows), == *,$1,* ]] && return 0; sleep 0.5; done; return 1; }
+# Copies named for this run: the Dock remembers names from earlier runs.
+id=${DIR##*.}; DOCKDB=$DIR/dock-$id.db
+cp "$LOGGER" "$DOCKDB"
+open -a "$APP" "$DOCKDB"; wait_window "dock-$id.db"
+check "the Dock icon's menu lists a database once it's open" "$(dock_lists "dock-$id.db")" true
+if [ -f "$VEROVAL" ]; then
+  DOCKENC=$DIR/dock-$id.Veroval; cp "$VEROVAL" "$DOCKENC"
+  open -a "$APP" "$DOCKENC"; wait_text "Unlock dock-$id.Veroval" 15000
+  check "…not an encrypted one still waiting at the Unlock prompt" "$(dock_lists "dock-$id.Veroval")" false
+  type_into "$(ref textfield '' --state secure)" "$KEY"; key return
+  wait_gone "Unlock dock-$id.Veroval"
+  check "…and lists it once unlocked" "$(dock_lists "dock-$id.Veroval")" true
+fi
+# Picking it in the Dock's menu opens it again, the way Finder does (RunEvent::Opened).
+ad --headed focus-window --app Querybook --title "dock-$id.db" >/dev/null; key cmd+w
+for _ in $(seq 10); do [[ ,$(windows), != *,dock-$id.db,* ]] && break; sleep 0.5; done
+dock_pick "dock-$id.db"
+check "picking it in the Dock's menu opens it" "$(wait_window "dock-$id.db" && echo open || echo "not open")" open
 quit
 
 # ── Encryption ──
