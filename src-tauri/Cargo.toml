@@ -23,6 +23,8 @@ tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 # Opens the Help links and the logs folder (called from Rust only, never from the page).
 tauri-plugin-opener = "2"
+# In-app updates (checked and installed from Rust; see updater.rs).
+tauri-plugin-updater = "2"
 # The OS name and version in crash reports and About.
 os_info = { version = "3", default-features = false }
 serde = { version = "1", features = ["derive"] }

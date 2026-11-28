@@ -7,6 +7,7 @@ mod db;
 mod history;
 mod io;
 mod support;
+mod updater;
 mod watchdog;
 
 use std::fs;
@@ -426,19 +427,32 @@ fn e2e_crash() {
 pub fn run() {
     // Before anything else, so even a panic during startup leaves a report.
     crash::install_hook();
+    let context = tauri::generate_context!();
+    // Builds without an updater key in tauri.conf.json run without the updater.
+    let updates = context
+        .config()
+        .plugins
+        .0
+        .get("updater")
+        .and_then(|u| u.get("pubkey"))
+        .and_then(|k| k.as_str())
+        .is_some_and(|k| !k.trim().is_empty());
     let builder = tauri::Builder::default();
     // Must be the first plugin: a second launch exits before anything else starts.
     #[cfg(any(windows, target_os = "linux"))]
     let builder = builder.plugin(tauri_plugin_single_instance::init(on_second_instance));
+    let builder = if updates { builder.plugin(tauri_plugin_updater::Builder::new().build()) } else { builder };
     builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(Registry::default())
-        .setup(|app| {
+        .manage(updater::UpdaterState::default())
+        .setup(move |app| {
             if let Ok(logs) = app.path().app_log_dir() {
                 crash::init(logs, app.package_info().version.to_string());
             }
             e2e_crash();
+            updater::init(app.handle(), updates);
             let reg = app.state::<Registry>();
             // `querybook path/to.db` opens that file in the first window.
             if let Some(path) = std::env::args_os().nth(1).map(PathBuf::from).filter(|p| p.is_file()) {
@@ -501,8 +515,14 @@ pub fn run() {
             support::open_support_link,
             support::reveal_crash_report,
             support::open_logs_folder,
+            updater::update_status,
+            updater::set_auto_update,
+            updater::check_update,
+            updater::dismiss_update,
+            updater::install_update,
+            updater::open_release_page,
         ])
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error while building tauri application")
         .run(|app, event| {
             if let tauri::RunEvent::Exit = event {

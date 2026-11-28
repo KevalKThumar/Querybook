@@ -545,6 +545,15 @@ impl Registry {
     pub fn find_path(&self, path: &Path) -> Option<String> {
         lock(&self.0).iter().find(|(_, s)| s.path.as_deref() == Some(path)).map(|(l, _)| l.clone())
     }
+
+    /// File name of a database with changes waiting to be written, if any window has some.
+    /// Installing an update waits for these: it closes the app, and nothing is saved without asking.
+    pub fn pending_name(&self) -> Option<String> {
+        let sessions: Vec<Arc<Session>> = lock(&self.0).values().cloned().collect();
+        sessions.iter().find(|s| s.has_pending()).map(|s| {
+            s.path.as_deref().and_then(Path::file_name).map_or("A database".into(), |n| n.to_string_lossy().into_owned())
+        })
+    }
 }
 
 #[cfg(test)]

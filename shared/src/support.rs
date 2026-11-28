@@ -144,6 +144,43 @@ pub enum SupportLink {
     Home,
 }
 
+// ── Updates ──
+
+/// A newer version found by the update check.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct UpdateInfo {
+    pub version: String,
+    pub current_version: String,
+    /// Release notes (Markdown text, shown as plain text).
+    pub notes: String,
+    pub date: Option<String>,
+    /// This install can replace itself; otherwise the user updates through their package manager.
+    pub can_install: bool,
+}
+
+/// Everything the update UI shows, sent on request and with every change.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct UpdateStatus {
+    /// This build has the updater (a release built with the signing key).
+    pub enabled: bool,
+    /// None until the user answers "Check for updates automatically?".
+    pub auto_check: Option<bool>,
+    pub current_version: String,
+    /// "installer", "app", "AppImage", "deb", "rpm", "development build".
+    pub install_kind: String,
+    pub can_install: bool,
+    /// An update to offer now (not skipped, not put off until the next launch).
+    pub available: Option<UpdateInfo>,
+}
+
+/// Progress of Update Now.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum UpdateProgress {
+    Downloading { downloaded: u64, total: Option<u64> },
+    Installing,
+    Failed,
+}
+
 /// A report id names a file in the crashes folder: letters, digits and dashes only.
 pub fn valid_report_id(id: &str) -> bool {
     !id.is_empty() && id.len() <= 80 && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')

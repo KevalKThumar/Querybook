@@ -25,6 +25,13 @@
       "csp": "default-src 'self' ipc: http://ipc.localhost; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval'"
     }
   },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQ0RkUzNzJDQUUxQkEzNzQKUldSMG94dXVMRGYrMUxUQ1lnSnhiUUFMdGg4cnV0cUVNeHpEeXNGbmNOY0xpa2t1SmVVT3pQQmkK",
+      "endpoints": ["https://github.com/KevalKThumar/Querybook/releases/latest/download/latest.json"],
+      "windows": { "installMode": "passive" }
+    }
+  },
   "bundle": {
     "active": true,
     "targets": "all",
