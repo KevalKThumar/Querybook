@@ -264,6 +264,10 @@ pub async fn install_update(app: AppHandle, state: State<'_, UpdaterState>, reg:
             },
             move || {
                 let _ = done_app.emit(PROGRESS_EVENT, UpdateProgress::Installing);
+                // On Windows the installer ends this process from inside the install step, so close
+                // the session now; otherwise the next launch would list an "unclean exit".
+                applog::info("update downloaded; installing");
+                crash::end_session();
             },
         )
         .await;
