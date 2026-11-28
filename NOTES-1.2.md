@@ -13,17 +13,22 @@
 ## Phase status (1.2)
 - [x] Version files → 1.2.0, CHANGELOG `## [1.2.0]`
 - [x] Merge `dock-recent-database` (Import SQL authorizer, `scripts/e2e-windows.mjs`)
-- [ ] `SessionInfo.pending` restores the unsaved state after a reload
-- [ ] Crash reports: panic hook, session lock, rolling log, frontend capture, blank-window watchdog, viewer
-- [ ] Help button, Settings, About, Shortcuts, issue templates, privacy wording
-- [ ] Updater (Rust side) + consent / update banners
-- [ ] release.yml: staging channel, updater artifacts, `.sig` after SignPath, `latest.json`, `SHA256SUMS.txt`, draft-then-publish
-- [ ] Package-manager jobs (gated by `vars.*_ENABLED`): winget, Homebrew tap, AUR, Cloudsmith
-- [ ] E2E (Windows) for every item above, plain + encrypted DB
+- [x] `SessionInfo.pending` restores the unsaved state after a reload
+- [x] Crash reports: panic hook, session lock, rolling log, frontend capture, blank-window watchdog, viewer
+- [x] Help button, Settings, About, Shortcuts, issue templates, privacy wording
+- [x] Updater (Rust side) + consent / update banners
+- [x] release.yml: staging channel, updater artifacts, `.sig` after SignPath, `latest.json`, `SHA256SUMS.txt`, draft-then-publish
+- [x] Package-manager jobs (gated by `vars.*_ENABLED`): winget, Homebrew tap, AUR, Cloudsmith
+- [x] E2E (Windows) for every item above, plain + encrypted DB
+
+## Next
+- [ ] Push `release/1.2`, run the workflow by hand with channel **staging** twice (1.2.901, then 1.2.902) and update one to the other on Windows + Linux (AppImage, deb)
+- [ ] Merge `release/1.2` → main = **v1.2.0**; install by hand on each OS; then a tiny change → v1.2.1 to prove the real update
+- [ ] E2E result 2026-11-28: Windows 49/49 passed (plain + encrypted)
 
 ## Needed from Keval
-- [ ] Updater key: `npx @tauri-apps/cli@2.12.4 signer generate -w ~/.tauri/querybook.key` (password, offline backup);
-      secrets `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`; send the **.pub** text
+- [x] Updater key: generated, at `C:\Users\thuma\.tauri\querybook.key` (keep an offline backup of it + password);
+      secrets `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` added 2026-11-28; pubkey in tauri.conf.json
 - [ ] Support email address
 - [ ] Website: private repo `KevalKThumar/querybook-website`, Netlify site (builds off) + `NETLIFY_AUTH_TOKEN` / `NETLIFY_SITE_ID`,
       `WEBSITE_DISPATCH_TOKEN` (fine-grained PAT, that repo only), domain (not querybook.org/.com — Pinterest's Querybook)
