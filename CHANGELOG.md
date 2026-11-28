@@ -2,6 +2,11 @@
 
 All notable changes to Querybook are listed here. Versions follow [Semantic Versioning](https://semver.org).
 
+## [1.2.0] — Unreleased
+
+### Security
+- Import SQL runs a script under a SQLite authorizer: it may change this database's tables and rows, which wait for Write Changes, and nothing else. ATTACH, re-keying, file-level PRAGMAs, VACUUM, savepoint control, `load_extension()` and `sqlcipher_export()` are refused with a message naming the statement.
+
 ## [1.1.3] — 2026-11-24
 
 ### Added
