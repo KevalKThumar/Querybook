@@ -33,14 +33,15 @@ dunce = "1"
 tauri-plugin-single-instance = "2"
 
 # SQLCipher 4 bundled. macOS uses CommonCrypto; elsewhere OpenSSL is built from source.
+# `hooks`: the authorizer that limits what an imported SQL script may run.
 # objc2: AppKit's recent documents, which the Dock icon's menu lists (already used by tao, wry, rfd).
 [target.'cfg(target_os = "macos")'.dependencies]
-rusqlite = { version = "0.41", features = ["bundled-sqlcipher"] }
+rusqlite = { version = "0.41", features = ["bundled-sqlcipher", "hooks"] }
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSDocumentController"] }
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSURL"] }
 [target.'cfg(not(target_os = "macos"))'.dependencies]
-rusqlite = { version = "0.41", features = ["bundled-sqlcipher-vendored-openssl"] }
+rusqlite = { version = "0.41", features = ["bundled-sqlcipher-vendored-openssl", "hooks"] }
 
 # The system's recent documents (already used by tauri, tao and muda).
 [target.'cfg(windows)'.dependencies]

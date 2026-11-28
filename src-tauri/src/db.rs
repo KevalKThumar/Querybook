@@ -11,6 +11,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use rusqlite::fallible_iterator::FallibleIterator;
+use rusqlite::hooks::{AuthAction, AuthContext, Authorization};
 use rusqlite::types::{Value, ValueRef};
 use rusqlite::{Batch, Connection, ErrorCode, InterruptHandle, Statement, params_from_iter};
 use shared::history::HistoryPage;
@@ -139,19 +140,51 @@ pub fn execute(conn: &Connection, sql: &str, params: &[Cell]) -> Result<ExecOutc
 /// [`Session::exec_script`] on a bare connection, without the change history.
 #[cfg(test)]
 pub fn exec_script(conn: &Connection, sql: &str) -> ScriptOutcome {
-    run_script(conn, sql, false, None)
+    run_script(conn, sql, None, None)
 }
 
-/// [`Session::exec_import`] on a bare connection, without the change history.
-#[cfg(test)]
-pub fn exec_import(conn: &Connection, sql: &str) -> ScriptOutcome {
-    run_script(conn, sql, true, None)
+/// What Import SQL's authorizer turned down in the statement being prepared,
+/// for the error message ("PRAGMA rekey", "ATTACH"…).
+#[derive(Clone, Default)]
+struct Refused(Arc<Mutex<Option<String>>>);
+
+impl Refused {
+    fn message(what: &str) -> String {
+        format!("Import SQL doesn't run {what}. Remove it from the script, or run it yourself in the SQL editor.")
+    }
+}
+
+/// The authorizer an imported script runs under. A `.sql` file can come from
+/// anyone, so it may change this database's tables and rows (which wait for
+/// Write Changes) and nothing else: no other files (ATTACH), no PRAGMA that
+/// re-keys the database or changes how its file is stored, no extensions.
+fn import_authorizer(refused: Refused) -> impl FnMut(AuthContext<'_>) -> Authorization + Send + 'static {
+    const FUNCTIONS: [&str; 2] = ["load_extension", "sqlcipher_export"];
+    move |ctx| {
+        let what = match ctx.action {
+            AuthAction::Attach { .. } => "ATTACH".to_string(),
+            AuthAction::Detach { .. } => "DETACH".to_string(),
+            AuthAction::Pragma { pragma_name, pragma_value }
+                if !sql::import_allows_pragma(pragma_name, pragma_value.is_some()) =>
+            {
+                format!("PRAGMA {pragma_name}")
+            }
+            AuthAction::Function { function_name } if FUNCTIONS.iter().any(|f| f.eq_ignore_ascii_case(function_name)) => {
+                format!("{function_name}()")
+            }
+            _ => return Authorization::Allow,
+        };
+        *lock(&refused.0) = Some(what);
+        Authorization::Deny
+    }
 }
 
 /// Run every statement in `sql`; keep the rows of the last one that returns columns.
-/// `import`: the script's own BEGIN / COMMIT join the pending changes (Import SQL).
+/// `import`: Import SQL. The script's own BEGIN / COMMIT join the pending
+/// changes, and statements that could end them or reach outside this database
+/// are refused (the caller installs [`import_authorizer`] for the rest).
 /// `journal` records what each statement changes, for the change history.
-fn run_script(conn: &Connection, sql: &str, import: bool, journal: Option<&Journal>) -> ScriptOutcome {
+fn run_script(conn: &Connection, sql: &str, import: Option<&Refused>, journal: Option<&Journal>) -> ScriptOutcome {
     let start = Instant::now();
     let before = conn.total_changes();
     let mut out = ScriptOutcome::default();
@@ -161,7 +194,10 @@ fn run_script(conn: &Connection, sql: &str, import: bool, journal: Option<&Journ
             None => Ok(false),
             Some(mut st) => {
                 let text = st.expanded_sql().unwrap_or_default();
-                if import {
+                if import.is_some() {
+                    if let Some(keyword) = sql::import_refuses(&text) {
+                        return Err(invalid(Refused::message(&format!("{keyword} statements"))));
+                    }
                     if sql::is_txn_end(&text) {
                         return Ok(true);
                     }
@@ -189,7 +225,9 @@ fn run_script(conn: &Connection, sql: &str, import: bool, journal: Option<&Journ
             Ok(true) => out.statements += 1,
             Ok(false) => break,
             Err(e) => {
-                out.error = Some(format!("Statement {}: {}", out.statements + 1, e.message));
+                // "not authorized" says nothing; name what the authorizer turned down.
+                let refused = import.and_then(|r| lock(&r.0).take()).map(|what| Refused::message(&what));
+                out.error = Some(format!("Statement {}: {}", out.statements + 1, refused.unwrap_or(e.message)));
                 break;
             }
         }
@@ -328,7 +366,7 @@ impl Session {
     /// first statement that writes opens the pending savepoint, so it waits for
     /// Write Changes like any grid edit. A COMMIT typed in the script is a save.
     pub fn exec_script(&self, sql: &str) -> Result<ScriptOutcome, AppError> {
-        let out = self.with_conn(|c| Ok(run_script(c, sql, false, Some(&self.journal))));
+        let out = self.with_conn(|c| Ok(run_script(c, sql, None, Some(&self.journal))));
         self.store_saves();
         out
     }
@@ -336,10 +374,20 @@ impl Session {
     /// Run a `.sql` file (Import SQL). The script's own `BEGIN … COMMIT` joins
     /// the pending changes: BEGIN opens the savepoint and COMMIT / END leave it
     /// open, so nothing reaches the file until the user writes the changes.
+    /// The file may not be the user's own, so it runs under [`import_authorizer`].
     pub fn exec_import(&self, sql: &str) -> Result<ScriptOutcome, AppError> {
-        let out = self.with_conn(|c| Ok(run_script(c, sql, true, Some(&self.journal))));
+        let out = {
+            let mut guard = lock(&self.conn);
+            let conn = guard.as_mut().ok_or_else(no_db)?;
+            let refused = Refused::default();
+            conn.authorizer(Some(import_authorizer(refused.clone()))).map_err(sql_err)?;
+            let out = run_script(conn, sql, Some(&refused), Some(&self.journal));
+            // Only the import is restricted: the grid and the SQL editor run what the user asks.
+            conn.authorizer(None::<fn(AuthContext<'_>) -> Authorization>).map_err(sql_err)?;
+            out
+        };
         self.store_saves();
-        out
+        Ok(out)
     }
 
     /// Write the pending changes to the file (COMMIT), if there are any:
@@ -672,7 +720,7 @@ pub mod tests {
         let path = tmp_dir("import").join("i.db");
         let s = Session::new(Some(path.clone()));
         s.connect(None).unwrap();
-        let import = |sql: &str| s.with_conn(|c| Ok(exec_import(c, sql))).unwrap();
+        let import = |sql: &str| s.exec_import(sql).unwrap();
         let other = open_conn(&path, None).unwrap();
         let rows = |c: &Connection| c.query_row("SELECT count(*) FROM sqlite_master WHERE name = 't'", [], |r| r.get::<_, i64>(0)).unwrap();
 
@@ -690,10 +738,31 @@ pub mod tests {
         assert_eq!(rows(&other), 1);
         assert_eq!(count(&other), 2);
 
+        // A script may only change this database's tables and rows.
+        let refused = |sql: &str, what: &str| {
+            let err = import(sql).error.unwrap_or_default();
+            assert!(err.contains(&format!("Import SQL doesn't run {what}")), "{sql}: {err}");
+        };
+        // ATTACH is turned down by the authorizer as it's prepared, before the keyword check.
+        refused("INSERT INTO t VALUES (9); ATTACH DATABASE 'x.db' AS a;", "ATTACH.");
+        refused("ROLLBACK", "ROLLBACK statements");
+        refused("VACUUM", "VACUUM statements");
+        refused("PRAGMA journal_mode = DELETE", "PRAGMA journal_mode");
+        refused("PRAGMA rekey = 'x'", "PRAGMA rekey");
+        refused("SELECT load_extension('x')", "load_extension()");
+        // The refused statements left the pending row (9) alone, and nothing reached the file.
+        assert!(s.has_pending());
+        assert_eq!(count(&other), 2);
+        s.write_pending().unwrap();
+        assert_eq!(count(&other), 3);
+
         // The SQL editor still runs a typed COMMIT as written.
         let out = s.with_conn(|c| Ok(exec_script(c, "BEGIN; INSERT INTO t VALUES (3); COMMIT;"))).unwrap();
         assert!(out.error.is_none() && !out.in_txn);
-        assert_eq!(count(&other), 3);
+        assert_eq!(count(&other), 4);
+        // …and isn't held to the import's limits.
+        let out = s.exec_script("PRAGMA journal_mode").unwrap();
+        assert!(out.error.is_none(), "{:?}", out.error);
     }
 
     #[test]
