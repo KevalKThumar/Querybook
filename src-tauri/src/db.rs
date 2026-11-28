@@ -415,7 +415,7 @@ impl Session {
         let key = lock(&self.key).clone();
         for entry in &saves {
             if let Err(e) = store.append(key.as_ref(), entry) {
-                eprintln!("history: couldn't keep a save: {}", e.message);
+                crate::applog::warn(&format!("history: couldn't keep a save ({:?})", e.kind));
             }
         }
     }

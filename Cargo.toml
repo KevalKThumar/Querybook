@@ -41,7 +41,8 @@ codegen-units = 1
 lto = true
 opt-level = 3
 panic = "abort"
-strip = true
+# Keep the symbol table so crash reports name the functions (debug info is still stripped).
+strip = "debuginfo"
 
 # Keep the wasm's `target_features` section: wasm-opt needs it to accept the
 # bulk-memory ops rustc emits (strip = true makes `trunk build --release` fail).

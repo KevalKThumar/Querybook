@@ -1,9 +1,13 @@
 //! Tauri shell: one SQLite/SQLCipher session per window, a thin SQL gateway,
 //! and the file dialogs. All SQL text is built by the UI (`shared::sql`).
 
+mod applog;
+mod crash;
 mod db;
 mod history;
 mod io;
+mod support;
+mod watchdog;
 
 use std::fs;
 use std::io::BufWriter;
@@ -16,10 +20,11 @@ use shared::{
     AppError, Cell, CsvPreview, ExecOutcome, KeyInput, OpenOutcome, ResultSet, ScriptOutcome, SessionInfo,
     SqlExportOptions,
 };
+use tauri::webview::PageLoadEvent;
 use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
 use tauri_plugin_dialog::{DialogExt, FilePath, MessageDialogButtons, MessageDialogKind, MessageDialogResult};
 
-type Res<T> = Result<T, AppError>;
+pub(crate) type Res<T> = Result<T, AppError>;
 
 static NEXT_WINDOW: AtomicUsize = AtomicUsize::new(1);
 
@@ -65,6 +70,7 @@ fn open_in(app: &AppHandle, caller: Option<&WebviewWindow>, path: PathBuf) -> Re
         return Ok(OpenOutcome::ThisWindow);
     }
     let label = format!("db-{}", NEXT_WINDOW.fetch_add(1, Ordering::Relaxed));
+    applog::info(&format!("open {} in a new window", applog::file_tag(&path)));
     reg.insert(&label, new_session(app, path));
     WebviewWindowBuilder::new(app, &label, WebviewUrl::App("index.html".into()))
         .title(title)
@@ -249,7 +255,8 @@ fn confirm_close(window: &tauri::Window, session: std::sync::Arc<Session>) {
 async fn connect(app: AppHandle, window: WebviewWindow, reg: State<'_, Registry>, key: Option<KeyInput>) -> Res<SessionInfo> {
     let s = reg.session(window.label())?;
     // Only once it's open: an encrypted file waiting at the Unlock prompt isn't listed.
-    let info = blocking(move || s.connect(key)).await?;
+    let info = blocking(move || s.connect(key)).await.inspect_err(|e| applog::warn(&format!("connect failed ({:?})", e.kind)))?;
+    applog::info(if info.encrypted { "connected (encrypted)" } else { "connected" });
     note_recent(&app, info.path.clone());
     Ok(info)
 }
@@ -276,7 +283,7 @@ async fn exec_script(window: WebviewWindow, reg: State<'_, Registry>, sql: Strin
 #[tauri::command]
 async fn write_changes(window: WebviewWindow, reg: State<'_, Registry>) -> Res<()> {
     let s = reg.session(window.label())?;
-    blocking(move || s.write_pending()).await
+    blocking(move || s.write_pending()).await.inspect_err(|e| applog::warn(&format!("write changes failed ({:?})", e.kind)))
 }
 
 /// The latest `limit` saves of this window's database, newest first.
@@ -351,7 +358,7 @@ async fn import_sql(window: WebviewWindow, reg: State<'_, Registry>, path: Strin
     blocking(move || s.exec_import(&sql)).await
 }
 
-fn save_path(app: &AppHandle, window: &WebviewWindow, file_name: &str, filter: (&str, &[&str])) -> Res<Option<PathBuf>> {
+pub(crate) fn save_path(app: &AppHandle, window: &WebviewWindow, file_name: &str, filter: (&str, &[&str])) -> Res<Option<PathBuf>> {
     picked_path(app.dialog().file().set_parent(window).set_file_name(file_name).add_filter(filter.0, filter.1).blocking_save_file())
 }
 
@@ -404,16 +411,34 @@ async fn export_sql(
     Ok(Some(shown))
 }
 
+/// E2E: `QUERYBOOK_E2E_CRASH=backend` panics two seconds after launch, to check
+/// that the next launch offers the crash report. Does nothing without the variable.
+fn e2e_crash() {
+    if std::env::var("QUERYBOOK_E2E_CRASH").as_deref() == Ok("backend") {
+        std::thread::spawn(|| {
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            panic!("E2E test crash (QUERYBOOK_E2E_CRASH=backend)");
+        });
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Before anything else, so even a panic during startup leaves a report.
+    crash::install_hook();
     let builder = tauri::Builder::default();
     // Must be the first plugin: a second launch exits before anything else starts.
     #[cfg(any(windows, target_os = "linux"))]
     let builder = builder.plugin(tauri_plugin_single_instance::init(on_second_instance));
     builder
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .manage(Registry::default())
         .setup(|app| {
+            if let Ok(logs) = app.path().app_log_dir() {
+                crash::init(logs, app.package_info().version.to_string());
+            }
+            e2e_crash();
             let reg = app.state::<Registry>();
             // `querybook path/to.db` opens that file in the first window.
             if let Some(path) = std::env::args_os().nth(1).map(PathBuf::from).filter(|p| p.is_file()) {
@@ -426,6 +451,12 @@ pub fn run() {
             }
             Ok(())
         })
+        // Every page load (a new window, a reload) arms the blank-window watchdog.
+        .on_page_load(|webview, payload| {
+            if payload.event() == PageLoadEvent::Started {
+                watchdog::arm(webview.app_handle(), webview.label());
+            }
+        })
         .on_window_event(|window, event| match event {
             WindowEvent::CloseRequested { api, .. } => {
                 if let Some(session) = window.state::<Registry>().get(window.label()).filter(|s| s.has_pending()) {
@@ -434,7 +465,10 @@ pub fn run() {
                 }
             }
             // Dropping the session closes the connection (rolling back anything unwritten).
-            WindowEvent::Destroyed => window.state::<Registry>().remove(window.label()),
+            WindowEvent::Destroyed => {
+                watchdog::forget(window.label());
+                window.state::<Registry>().remove(window.label());
+            }
             _ => {}
         })
         .invoke_handler(tauri::generate_handler![
@@ -456,10 +490,24 @@ pub fn run() {
             import_sql,
             export_csv,
             export_sql,
+            support::app_info,
+            support::app_ready,
+            support::report_frontend_error,
+            support::list_crash_reports,
+            support::crash_report,
+            support::delete_crash_reports,
+            support::pending_crash_prompt,
+            support::save_crash_report,
+            support::open_support_link,
+            support::reveal_crash_report,
+            support::open_logs_folder,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| {
+            if let tauri::RunEvent::Exit = event {
+                crash::end_session();
+            }
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Opened { urls } = event {
                 open_external(app, urls.iter().filter_map(|u| u.to_file_path().ok()).collect());
