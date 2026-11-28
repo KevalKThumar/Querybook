@@ -1,0 +1,23 @@
+@use "../../../../styles/variables" as *;
+
+.crash-prompt-icon { color: $danger; }
+
+.crash-prompt-body { font-size: $font-size-base; }
+
+.crash-prompt-safe {
+  padding: $spacing-sm $spacing-md;
+  border-radius: $radius;
+  background: $bg-subtle;
+  > .bi { color: $success; }
+}
+
+.crash-prompt-facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: $spacing-xs $spacing-md;
+  margin-bottom: $spacing-md;
+  dt { font-weight: $font-weight-semibold; color: $text-muted; }
+  dd { margin: 0; font-family: $font-mono; font-size: $font-size-sm; }
+}
+
+.crash-prompt-hint { font-size: $font-size-sm; color: $text-muted; }

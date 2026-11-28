@@ -1,0 +1,22 @@
+@use "../../../../styles/variables" as *;
+
+.settings-dialog { width: 520px; }
+
+.settings-section {
+  padding-bottom: $spacing-lg;
+  margin-bottom: $spacing-lg;
+  border-bottom: 1px solid $border;
+
+  &:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
+}
+
+.settings-title {
+  margin-bottom: $spacing-sm;
+  font-weight: $font-weight-semibold;
+}
+
+.settings-hint {
+  margin-bottom: $spacing-sm;
+  font-size: $font-size-sm;
+  color: $text-muted;
+}

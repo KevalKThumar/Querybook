@@ -1,0 +1,115 @@
+@use "../../../../styles/variables" as *;
+
+.crash-reports-dialog { width: 860px; }
+
+.crash-reports-local {
+  font-size: $font-size-sm;
+  font-weight: normal;
+  color: $text-muted;
+}
+
+.crash-reports-body {
+  display: flex;
+  min-height: 360px;
+  max-height: calc(100vh - 230px);
+  overflow: hidden;
+}
+
+.crash-reports-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: $spacing-xs;
+  padding: $spacing-xl;
+  text-align: center;
+  > .bi { font-size: 28px; color: $text-muted; }
+}
+
+.crash-reports-empty-hint {
+  max-width: 360px;
+  font-size: $font-size-sm;
+  color: $text-muted;
+}
+
+.crash-reports-list {
+  flex: 0 0 250px;
+  overflow-y: auto;
+  border-right: 1px solid $border;
+  background: $bg-subtle;
+}
+
+.crash-reports-item {
+  display: flex;
+  align-items: flex-start;
+  gap: $spacing-sm;
+  width: 100%;
+  padding: $spacing-sm $spacing-md;
+  border: none;
+  border-bottom: 1px solid $border;
+  background: none;
+  color: inherit;
+  text-align: left;
+
+  &:hover { background: $bg-hover; }
+  &.active { background: $bg-selected; }
+  > .bi { margin-top: 2px; color: $danger; }
+}
+
+.crash-reports-item-text { display: flex; flex-direction: column; min-width: 0; }
+.crash-reports-item-title { font-weight: $font-weight-medium; }
+.crash-reports-item-sub { font-size: $font-size-xs; color: $text-muted; }
+
+.crash-reports-detail {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: $spacing-lg;
+}
+
+.crash-reports-title { font-size: $font-size-lg; font-weight: $font-weight-semibold; }
+
+.crash-reports-message {
+  margin: $spacing-xs 0 $spacing-md;
+  font-family: $font-mono;
+  font-size: $font-size-sm;
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.crash-reports-facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px $spacing-md;
+  font-size: $font-size-sm;
+  dt { font-weight: $font-weight-semibold; color: $text-muted; }
+  dd { margin: 0; word-break: break-word; }
+}
+
+.crash-reports-section {
+  margin: $spacing-md 0 $spacing-xs;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-semibold;
+  color: $text-muted;
+}
+
+.crash-reports-pre {
+  max-height: 220px;
+  margin: 0;
+  padding: $spacing-sm;
+  overflow: auto;
+  border: 1px solid $border;
+  border-radius: $radius;
+  background: $bg-subtle;
+  font-size: $font-size-xs;
+}
+
+.crash-reports-privacy {
+  margin: $spacing-md 0 0;
+  font-size: $font-size-sm;
+  color: $text-muted;
+  > .bi { color: $success; }
+}

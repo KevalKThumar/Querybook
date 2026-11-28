@@ -19,6 +19,7 @@ use crate::database::dialogs::export_sql_dialog::export_sql_dialog_component::Ex
 use crate::database::dialogs::import_csv_dialog::import_csv_dialog_component::ImportCsvDialog;
 use crate::shared::common_structure::ThemeMode;
 use crate::shared::services::platform_service::PlatformService;
+use crate::support::components::help_menu::help_menu_component::HelpMenu;
 
 #[allow(clippy::too_many_arguments)]
 pub fn browser_view(
@@ -123,6 +124,7 @@ pub fn browser_view(
                     <i class=move || theme_mode.get().icon()></i>
                     <span>{move || theme_mode.get().label()}</span>
                 </button>
+                <HelpMenu class="browser-tool" labelled=true />
             </div>
 
             // ── Sidebar + tabs ──

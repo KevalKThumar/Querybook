@@ -14,7 +14,24 @@
     <!-- Trunk entry point: builds the Rust/Wasm binary -->
     <link data-trunk rel="rust" data-wasm-opt="z" />
     <link data-trunk rel="scss" href="styles/global.scss" />
+
+    <!-- Shown until the app mounts (it removes #qb-boot). Plain CSS: if the app never
+         starts, the backend watchdog offers Reload / Report a Problem. -->
+    <style>
+      #qb-boot { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center;
+        justify-content: center; gap: 10px; font: 13px system-ui, -apple-system, "Segoe UI", sans-serif;
+        color: #5c6670; background: #fff; }
+      #qb-boot img { width: 56px; height: 56px; opacity: 0.9; }
+      #qb-boot .qb-boot-slow { max-width: 320px; text-align: center; opacity: 0; animation: qb-boot-in 0.4s 6s forwards; }
+      @keyframes qb-boot-in { to { opacity: 1; } }
+      @media (prefers-color-scheme: dark) { #qb-boot { color: #a3abb5; background: #212529; } }
+    </style>
   </head>
   <body>
+    <div id="qb-boot" role="status">
+      <img src="/querybook.png" alt="" />
+      <div>Loading Querybook…</div>
+      <div class="qb-boot-slow">Still loading? If this window stays blank, Querybook will offer to reload it.</div>
+    </div>
   </body>
 </html>

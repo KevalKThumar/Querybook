@@ -1,0 +1,30 @@
+@use "../../../../styles/variables" as *;
+
+.update-dialog { width: 560px; }
+.update-dialog-icon { color: $primary; }
+
+.update-dialog-versions { font-size: $font-size-sm; color: $text-muted; }
+
+.update-dialog-section {
+  margin: $spacing-md 0 $spacing-xs;
+  font-weight: $font-weight-semibold;
+}
+
+.update-dialog-notes {
+  max-height: 260px;
+  margin-bottom: $spacing-md;
+  padding: $spacing-sm $spacing-md;
+  overflow: auto;
+  border: 1px solid $border;
+  border-radius: $radius;
+  background: $bg-subtle;
+  font-family: $font-primary;
+  font-size: $font-size-sm;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.update-dialog-hint { font-size: $font-size-sm; color: $text-muted; }
+
+.update-dialog-progress { margin-top: $spacing-md; }
+.update-dialog-progress-text { margin-top: $spacing-xs; font-size: $font-size-sm; }

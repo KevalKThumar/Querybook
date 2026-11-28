@@ -1,0 +1,39 @@
+@use "../../../../styles/variables" as *;
+
+.about-dialog { width: 420px; }
+
+.about-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.about-logo { width: 72px; height: 72px; margin-bottom: $spacing-sm; }
+.about-name { font-size: $font-size-xl; font-weight: $font-weight-semibold; }
+.about-version { color: $text-muted; }
+.about-tagline { margin: $spacing-sm 0 $spacing-md; }
+
+.about-facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px $spacing-md;
+  width: 100%;
+  margin-bottom: $spacing-md;
+  font-size: $font-size-sm;
+  text-align: left;
+  dt { font-weight: $font-weight-semibold; color: $text-muted; }
+  dd { margin: 0; user-select: text; -webkit-user-select: text; }
+}
+
+.about-privacy {
+  padding: $spacing-sm $spacing-md;
+  border-radius: $radius;
+  background: $bg-subtle;
+  font-size: $font-size-sm;
+  text-align: left;
+  > .bi { color: $success; }
+}
+
+.about-links { display: flex; flex-wrap: wrap; justify-content: center; }
+.about-license { margin-top: $spacing-sm; font-size: $font-size-xs; color: $text-muted; }

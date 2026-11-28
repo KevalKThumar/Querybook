@@ -59,7 +59,11 @@ impl ThemeService {
 
     /// System → Light → Dark → System.
     pub fn cycle(&self) {
-        let m = self.mode.get_untracked().next();
+        self.set(self.mode.get_untracked().next());
+    }
+
+    /// Use `m` in every window (Settings).
+    pub fn set(&self, m: ThemeMode) {
         apply(m);
         LocalStorageService::set(STORAGE_THEME, m.as_str());
         self.mode.set(m);
