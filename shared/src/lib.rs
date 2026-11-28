@@ -5,11 +5,13 @@ use serde::{Deserialize, Serialize};
 
 pub mod complete;
 pub mod copy;
+pub mod encode;
 pub mod format;
 pub mod history;
 pub mod keys;
 pub mod lexer;
 pub mod sql;
+pub mod support;
 
 /// One SQLite value as it crosses the IPC bridge.
 ///
