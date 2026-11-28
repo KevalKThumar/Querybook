@@ -399,3 +399,110 @@ jobs:
           fi
           gh release upload updater-staging out/latest.json --clobber
 
+  # ── After a real release: package managers and the website ──
+  # Each runs only when its repository variable is "true" (see packaging/README.md), and a
+  # failure here never undoes the release.
+
+  winget:
+    name: winget
+    needs: [plan, release]
+    if: needs.plan.outputs.channel == 'stable' && vars.WINGET_ENABLED == 'true'
+    runs-on: windows-latest
+    steps:
+      - uses: vedantmgoyal9/winget-releaser@v2
+        with:
+          identifier: KevalKThumar.Querybook
+          release-tag: v${{ needs.plan.outputs.version }}
+          installers-regex: '_x64-setup\.exe$'
+          max-versions-to-keep: 5
+          token: ${{ secrets.WINGET_TOKEN }}
+
+  homebrew:
+    name: Homebrew tap
+    needs: [plan, release]
+    if: needs.plan.outputs.channel == 'stable' && vars.HOMEBREW_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: querybook
+      - uses: actions/checkout@v7
+        with:
+          repository: KevalKThumar/homebrew-tap
+          ssh-key: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
+          path: tap
+      - name: Update the cask
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "v$VERSION" --repo "$GITHUB_REPOSITORY" --pattern SHA256SUMS.txt --dir .
+          sha=$(grep "Querybook_${VERSION}_aarch64.dmg" SHA256SUMS.txt | cut -d' ' -f1)
+          if [ -z "$sha" ]; then echo "::error::No checksum for the dmg"; exit 1; fi
+          mkdir -p tap/Casks
+          sed -e "s/@VERSION@/$VERSION/" -e "s/@SHA256@/$sha/" querybook/packaging/homebrew/querybook.rb.in > tap/Casks/querybook.rb
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks/querybook.rb
+          git diff --cached --quiet || git commit -m "querybook $VERSION"
+          git push
+
+  aur:
+    name: AUR
+    needs: [plan, release]
+    if: needs.plan.outputs.channel == 'stable' && vars.AUR_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Fill in the PKGBUILD
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "v$VERSION" --repo "$GITHUB_REPOSITORY" --pattern SHA256SUMS.txt --dir .
+          sha=$(grep "Querybook_${VERSION}_amd64.deb" SHA256SUMS.txt | cut -d' ' -f1)
+          if [ -z "$sha" ]; then echo "::error::No checksum for the deb"; exit 1; fi
+          sed -e "s/@VERSION@/$VERSION/" -e "s/@SHA256@/$sha/" packaging/aur/PKGBUILD.in > PKGBUILD
+      - uses: KSXGitHub/github-actions-deploy-aur@v4.2.0
+        with:
+          pkgname: querybook-bin
+          pkgbuild: ./PKGBUILD
+          commit_username: ${{ secrets.AUR_USERNAME }}
+          commit_email: ${{ secrets.AUR_EMAIL }}
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          commit_message: "querybook-bin ${{ needs.plan.outputs.version }}"
+
+  linux-repo:
+    name: apt and dnf (Cloudsmith)
+    needs: [plan, release]
+    if: needs.plan.outputs.channel == 'stable' && vars.CLOUDSMITH_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+      CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_API_KEY }}
+      OWNER: ${{ vars.CLOUDSMITH_OWNER }}
+    steps:
+      - name: Push the .deb and .rpm
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "v$VERSION" --repo "$GITHUB_REPOSITORY" --pattern '*.deb' --pattern '*.rpm' --dir pkgs
+          pip install --quiet cloudsmith-cli
+          cloudsmith push deb "$OWNER/querybook/any-distro/any-version" pkgs/*.deb
+          cloudsmith push rpm "$OWNER/querybook/any-distro/any-version" pkgs/*.rpm
+
+  website:
+    name: Rebuild the website
+    needs: [plan, release]
+    if: needs.plan.outputs.channel == 'stable' && vars.WEBSITE_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Tell querybook-website about the release
+        env:
+          GH_TOKEN: ${{ secrets.WEBSITE_DISPATCH_TOKEN }}
+        run: |
+          gh api repos/KevalKThumar/querybook-website/dispatches \
+            -f event_type=querybook-release -f "client_payload[version]=${{ needs.plan.outputs.version }}"

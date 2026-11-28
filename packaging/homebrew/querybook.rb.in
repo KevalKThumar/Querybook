@@ -1,0 +1,41 @@
+# Homebrew cask for KevalKThumar/homebrew-tap (Casks/querybook.rb).
+# The release workflow fills in @VERSION@ and @SHA256@ and pushes it to the tap.
+#
+# Written to Homebrew's Cask Cookbook rules (livecheck, zap, auto_updates) so it can move
+# to homebrew/cask once Querybook is notarized and notable enough.
+cask "querybook" do
+  version "@VERSION@"
+  sha256 "@SHA256@"
+
+  url "https://github.com/KevalKThumar/Querybook/releases/download/v#{version}/Querybook_#{version}_aarch64.dmg",
+      verified: "github.com/KevalKThumar/Querybook/"
+  name "Querybook"
+  desc "SQLite and SQLCipher database browser"
+  homepage "https://github.com/KevalKThumar/Querybook"
+
+  livecheck do
+    url :url
+    strategy :github_latest
+  end
+
+  # Querybook updates itself (Help › Check for Updates… downloads and installs).
+  auto_updates true
+  depends_on arch: :arm64
+  depends_on macos: ">= :big_sur"
+
+  app "Querybook.app"
+
+  zap trash: [
+    "~/Library/Application Support/com.kevalthumar.querybook",
+    "~/Library/Caches/com.kevalthumar.querybook",
+    "~/Library/Logs/com.kevalthumar.querybook",
+    "~/Library/Preferences/com.kevalthumar.querybook.plist",
+    "~/Library/Saved Application State/com.kevalthumar.querybook.savedState",
+    "~/Library/WebKit/com.kevalthumar.querybook",
+  ]
+
+  caveats <<~EOS
+    Querybook is not notarized yet. The first time you open it, macOS blocks it:
+    open System Settings › Privacy & Security and click "Open Anyway" next to Querybook.
+  EOS
+end

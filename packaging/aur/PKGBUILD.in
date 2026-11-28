@@ -1,0 +1,20 @@
+# Maintainer: Keval Thumar <128049281+KevalKThumar@users.noreply.github.com>
+# AUR package querybook-bin: the release .deb, repackaged.
+# The release workflow fills in @VERSION@ and @SHA256@ and pushes it to the AUR.
+pkgname=querybook-bin
+pkgver=@VERSION@
+pkgrel=1
+pkgdesc="SQLite and SQLCipher database browser. Every database in its own window"
+arch=('x86_64')
+url="https://github.com/KevalKThumar/Querybook"
+license=('MIT' 'Apache-2.0')
+depends=('webkit2gtk-4.1' 'gtk3' 'hicolor-icon-theme')
+provides=('querybook')
+conflicts=('querybook')
+source=("Querybook_${pkgver}_amd64.deb::https://github.com/KevalKThumar/Querybook/releases/download/v${pkgver}/Querybook_${pkgver}_amd64.deb")
+sha256sums=('@SHA256@')
+
+package() {
+  # The .deb's payload: the binary, the desktop entry, icons and the bundled licences.
+  bsdtar -xf data.tar.* -C "${pkgdir}"
+}
