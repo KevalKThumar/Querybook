@@ -6,6 +6,7 @@ use leptos::prelude::*;
 
 use crate::shared::common_structure::ThemeMode;
 use crate::shared::services::platform_service::PlatformService;
+use crate::support::components::help_menu::help_menu_component::HelpMenu;
 
 pub fn welcome_view(
     recent: Signal<Vec<(String, String, String)>>,
@@ -17,15 +18,14 @@ pub fn welcome_view(
 ) -> impl IntoView {
     view! {
         <div class="welcome d-flex align-items-center justify-content-center h-100 position-relative">
-            <button
-                class="btn btn-sm btn-outline-secondary welcome-theme"
-                title="Theme"
-                on:click=move |_| on_theme.run(())
-            >
-                <i class=move || theme_mode.get().icon()></i>
-                " "
-                {move || theme_mode.get().label()}
-            </button>
+            <div class="welcome-theme d-flex gap-2">
+                <button class="btn btn-sm btn-outline-secondary" title="Theme" on:click=move |_| on_theme.run(())>
+                    <i class=move || theme_mode.get().icon()></i>
+                    " "
+                    {move || theme_mode.get().label()}
+                </button>
+                <HelpMenu class="btn-outline-secondary" labelled=true />
+            </div>
 
             <div class="welcome-card">
                 <div class="welcome-brand d-flex align-items-center gap-3 mb-4">

@@ -1,6 +1,6 @@
 [package]
 name = "querybook"
-version = "1.1.2"
+version = "1.2.0"
 description = "Querybook — SQLite / SQLCipher browser"
 authors = ["Keval Thumar"]
 license = "MIT OR Apache-2.0"
@@ -21,6 +21,12 @@ tauri-build = { version = "2", features = [] }
 shared = { path = "../shared" }
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
+# Opens the Help links and the logs folder (called from Rust only, never from the page).
+tauri-plugin-opener = "2"
+# In-app updates (checked and installed from Rust; see updater.rs).
+tauri-plugin-updater = "2"
+# The OS name and version in crash reports and About.
+os_info = { version = "3", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 csv = "1"
@@ -33,14 +39,15 @@ dunce = "1"
 tauri-plugin-single-instance = "2"
 
 # SQLCipher 4 bundled. macOS uses CommonCrypto; elsewhere OpenSSL is built from source.
+# `hooks`: the authorizer that limits what an imported SQL script may run.
 # objc2: AppKit's recent documents, which the Dock icon's menu lists (already used by tao, wry, rfd).
 [target.'cfg(target_os = "macos")'.dependencies]
-rusqlite = { version = "0.41", features = ["bundled-sqlcipher"] }
+rusqlite = { version = "0.41", features = ["bundled-sqlcipher", "hooks"] }
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSDocumentController"] }
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSURL"] }
 [target.'cfg(not(target_os = "macos"))'.dependencies]
-rusqlite = { version = "0.41", features = ["bundled-sqlcipher-vendored-openssl"] }
+rusqlite = { version = "0.41", features = ["bundled-sqlcipher-vendored-openssl", "hooks"] }
 
 # The system's recent documents (already used by tauri, tao and muda).
 [target.'cfg(windows)'.dependencies]

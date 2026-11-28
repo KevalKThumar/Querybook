@@ -4,8 +4,10 @@
 # edit + Write Changes, Revert, the SQL editor, History, integrity check, column resize,
 # column filters (= <> != contains), the cell inspector opening on click, the close
 # prompt, opening any extension (File › Open, Finder, Open With), the Dock icon's recent
-# databases, and encrypt / unlock / change / remove encryption (change and remove need the
-# current password).
+# databases, encrypt / unlock / change / remove encryption (change and remove need the
+# current password), then the Help menu, Settings and About, the one-time update question,
+# the blank-window watchdog (Reload keeps pending changes), a test crash and the report the
+# next launch offers, and that the logs folder holds no paths, keys or data.
 #
 # It takes keyboard focus for about a minute (WebView text fields only take real
 # keystrokes), so don't type while it runs. It quits Querybook at the end. The
@@ -407,6 +409,73 @@ check "…and the file stays encrypted" "$(q 'select 1' | grep -c 'not a databas
 type_into "$(ref textfield '' --state secure)" "$KEY2"   # the first field is the current password
 click button "Remove encryption"; wait_text "Not encrypted" 15000
 check "remove encryption" "$(head -c 15 "$DB") $(q 'pragma integrity_check')" "SQLite format 3 ok"
-
 quit
+
+# ── Help, Settings, About, updates ──
+# The update answer lives in the app's own config folder: keep the user's.
+UPREFS="$HOME/Library/Application Support/com.kevalthumar.querybook/updater.json"
+[ -f "$UPREFS" ] && mv "$UPREFS" "$DIR/updater.json.saved"
+restore_prefs() { if [ -f "$DIR/updater.json.saved" ]; then mv "$DIR/updater.json.saved" "$UPREFS"; else rm -f "$UPREFS"; fi; }
+trap "$(trap -p EXIT | sed -E "s/^trap -- '(.*)' EXIT$/\1/"); restore_prefs" EXIT
+HELPDB=$DIR/help.db
+sqlite3 "$HELPDB" "CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT); INSERT INTO notes VALUES (1, 'private-note-text');"
+open -a "$APP" "$HELPDB"; wait_text notes 15000
+see "first launch asks once whether to check for updates" "Check for updates automatically?" 15000
+click button "Don't Check" --exact
+check "…Don't Check answers it" "$(wait_gone 'Check for updates automatically?' && echo gone || echo 'still there')" gone
+check "…and the answer is saved" "$(jq -r .auto_check "$UPREFS" 2>/dev/null)" false
+click button Help --exact
+see "the Help button opens its menu" "Crash Reports…"
+click button "Check for Updates…"
+answered=no
+for _ in $(seq 15); do
+  for t in "newest version" "Couldn't check for updates" "is available"; do wait_text "$t" 700 && answered=yes && break 2; done
+done
+check "a manual update check answers" "$answered" yes
+key escape
+click button Help --exact; click button "Keyboard Shortcuts"
+see "…Keyboard Shortcuts lists the shortcuts" "Write changes (when there are any)"
+key escape
+key cmd+/; see "⌘/ opens Keyboard Shortcuts" "Format SQL"; key escape
+key cmd+,; see "⌘, opens Settings" "Appearance"
+see "…with the automatic update switch" "Check for updates automatically"; key escape
+click button Help --exact; click button "About Querybook"
+see "About shows the version" "Version 1."; key escape
+quit
+
+# ── A blank window: the watchdog offers Reload, which keeps pending changes ──
+# Launched directly (open -a can't pass the variable); the watchdog waits 20 s in release builds.
+QUERYBOOK_E2E_NO_READY=1 "$APP/Contents/MacOS/querybook" "$HELPDB" >/dev/null 2>&1 &
+wait_text notes 15000
+run_sql "INSERT INTO notes (body) VALUES ('pending-before-reload')"
+see "a change is pending before the reload" "Unsaved changes"
+see "a window that never reports ready gets the watchdog dialog" "didn't finish loading" 40000
+click button "Reload Window" --exact
+see "…Reload Window brings the window back with its changes still pending" "Unsaved changes" 20000
+check "…and nothing was written" "$(sqlite3 "$HELPDB" "select count(*) from notes where body='pending-before-reload'")" 0
+# It fires again after the reload; Close Window goes through the close prompt.
+wait_text "didn't finish loading" 40000; click button "Close Window" --exact
+wait_text "Don't Save" 10000; click button "Don't Save" --exact
+for _ in $(seq 20); do pgrep -xq querybook || break; sleep 0.5; done
+check "…Close Window asks about the change, and Don't Save closes it" "$(pgrep -xq querybook && echo running || echo closed)" closed
+
+# ── A crash: the next launch offers the report ──
+QUERYBOOK_E2E_CRASH=backend "$APP/Contents/MacOS/querybook" "$HELPDB" >/dev/null 2>&1 &
+for _ in $(seq 40); do pgrep -xq querybook || break; sleep 0.3; done
+check "the test crash ends the app" "$(pgrep -xq querybook && echo running || echo ended)" ended
+# macOS's own "quit unexpectedly" reporter may come up too; close it.
+ad close-app "Problem Reporter" >/dev/null 2>&1
+open -a "$APP" "$HELPDB"; wait_text notes 15000
+see "the next launch says Querybook quit unexpectedly" "Querybook quit unexpectedly" 15000
+click button "View Report" --exact
+see "…View Report shows the crash" "E2E test crash" 10000
+printf '' | pbcopy; click button Copy; sleep 0.8
+check "…Copy puts the whole report on the clipboard" "$(pbpaste | grep -c -e 'Kind: BackendPanic' -e 'Backtrace:')" 2
+key escape
+quit
+
+# Nothing private in the logs folder: no paths, passwords, or data from the databases.
+LOGS="$HOME/Library/Logs/com.kevalthumar.querybook"
+leaks=$(grep -rlF -e "$DIR" -e "$KEY" -e "$KEY2" -e private-note-text -e pending-before-reload "$LOGS" 2>/dev/null | tr '\n' ' ')
+check "crash reports and the log hold no paths, keys or data" "$leaks" ""
 echo; [ "$FAILS" -eq 0 ] && echo "All checks passed." || { echo "$FAILS check(s) failed."; exit 1; }

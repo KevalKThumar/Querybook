@@ -25,11 +25,15 @@ Querybook/
 │   │   ├── database_service.rs    # the only place that calls the backend
 │   │   ├── database_constant.rs   # command names, SQL used by the UI, limits
 │   │   └── database_structure.rs  # plain data types
+│   ├── support/          # Help menu, crash reports, About, Settings, shortcuts, update card and dialog
 │   └── shared/           # context menu, toasts, dialog shell, services (IPC bridge, clipboard, storage, theme, platform)
 ├── shared/               # pure Rust shared by UI and backend: wire types, SQL builders,
 │                         # lexer, autocomplete, formatter, copy formats, shortcut labels (all unit-tested)
 ├── src-tauri/            # native backend: windows, file dialogs, SQLite/SQLCipher sessions, import/export,
-│                         # change history (history.rs)
+│                         # change history (history.rs), crash reports and log (crash.rs, applog.rs),
+│                         # blank-window watchdog, Help links (support.rs), updates (updater.rs)
+├── packaging/            # winget / Homebrew / AUR / Cloudsmith templates the release workflow fills in
+├── scripts/              # E2E tests (e2e-windows.mjs, e2e-macos.sh), release/latest-json.mjs
 ├── .cargo/config.toml    # SQLite compile flags (the preupdate hook the change history uses)
 ├── styles/               # global.scss (only @use lines), variables, mixins, base
 └── assets/               # vendored Bootstrap + icons, the app logo
@@ -75,9 +79,18 @@ Every merge into `main` (except one that only touches Markdown) is a release; th
    - The repo's version files are not updated by the workflow (`main` only takes merges from its owner), so they can lag behind the releases.
 2. Optional: add a `## [X.Y.Z]` section for that version to [CHANGELOG.md](CHANGELOG.md). It becomes the release notes. Without one, GitHub writes the notes from the merged pull requests.
 3. Once SignPath is set up, the workflow sends the Windows installer to it. Approve the signing request on [signpath.io](https://app.signpath.io) (the run waits up to 4 hours). Until then the installer is published unsigned.
-4. The workflow publishes the release `vX.Y.Z` with the files, which creates the tag. If a build or signing fails, nothing is published, and the next merge tries the same version again.
+4. The workflow signs the update files (the Windows installer after SignPath), checks every signature against the public key in `tauri.conf.json`, writes `latest.json` and `SHA256SUMS.txt`, and publishes the release `vX.Y.Z`, which creates the tag. The release is a draft until every file is uploaded, so installed apps never see a half-finished one. If a build or signing fails, nothing is published, and the next merge tries the same version again.
+5. Installed copies that allow update checks see the new version within a day. The CHANGELOG section is what they show as "What's new", so write it for users.
 
-To try a build without releasing, open **Actions → Release → Run workflow**. The files are attached to the run as artifacts.
+To try a build without releasing, open **Actions → Release → Run workflow** with channel **build-only**. The files are attached to the run as artifacts.
+
+### Testing an update before releasing it
+
+Run the workflow by hand with channel **staging** and a version such as `1.2.901`. It publishes a prerelease `staging-1.2.901` whose app reads its updates from the prerelease `updater-staging`, never from real releases. Install it, run the workflow again with `1.2.902`, and the installed staging build offers 1.2.902 through the normal update dialog. Real users never see staging builds.
+
+### The updater key
+
+Updates are signed with a minisign key. The public half is `plugins.updater.pubkey` in `src-tauri/tauri.conf.json`; the private half and its password are the repository secrets `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, with an offline backup kept by the owner. **If the private key or its password is lost, installed copies can't update any more** (a new key means a new version people install by hand). Without the secret the workflow still releases, but without update files.
 
 ### Setting up SignPath (once)
 

@@ -1,0 +1,7 @@
+@use "../../../../styles/variables" as *;
+
+.help-menu-button {
+  display: inline-flex;
+  align-items: center;
+  gap: $spacing-xs;
+}

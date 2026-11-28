@@ -24,6 +24,7 @@ use shared::history::{
     ColumnChange, HistoryEntry, HistoryPage, RowChange, RowChangeKind, SchemaChange, SchemaChangeKind, TableChanges,
     clip, show,
 };
+use shared::encode::fnv1a64 as fnv1a;
 use shared::sql::{self, quote_ident};
 use shared::{AppError, Cell, ErrorKind, KeyInput};
 
@@ -545,11 +546,6 @@ impl Journal {
 
 // ── Storage ──
 
-/// FNV-1a: a hash that stays the same across Rust versions, for file names.
-fn fnv1a(s: &str) -> u64 {
-    s.bytes().fold(0xcbf2_9ce4_8422_2325, |h, b| (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3))
-}
-
 const STORE_SETUP: &str = "PRAGMA secure_delete = ON;
 CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS saves(id INTEGER PRIMARY KEY, saved_at INTEGER NOT NULL, entry TEXT NOT NULL);";
@@ -589,7 +585,7 @@ impl Store {
                 Err(e) if matches!(e.kind, ErrorKind::NeedsKey | ErrorKind::WrongKey) => {
                     let aside = file.with_extension(format!("unreadable-{}.db", now_ms()));
                     fs::rename(&file, &aside).map_err(io_err)?;
-                    eprintln!("history: {} can't be read with this key; moved to {}", file.display(), aside.display());
+                    crate::applog::warn("history: a history file couldn't be read with this key and was moved aside");
                     if !create {
                         return Ok(None);
                     }
@@ -676,7 +672,7 @@ impl Store {
         let copied = export_copy(&conn, &tmp, new);
         drop(conn);
         if let Err(e) = copied.and_then(|_| fs::rename(&tmp, &file).map_err(io_err)) {
-            eprintln!("history: couldn't re-key {}: {}; deleting it", file.display(), e.message);
+            crate::applog::warn(&format!("history: couldn't re-key a history file ({:?}); deleting it", e.kind));
             let _ = fs::remove_file(&tmp);
             let _ = fs::remove_file(&file);
         }

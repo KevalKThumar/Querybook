@@ -1,0 +1,33 @@
+@use "../../../../styles/variables" as *;
+
+.update-card {
+  position: fixed;
+  left: $spacing-lg;
+  bottom: calc(#{$height-statusbar} + #{$spacing-md});
+  z-index: $z-dialog-bg;
+  width: 340px;
+  max-width: calc(100vw - 32px);
+  padding: $spacing-md;
+  border: 1px solid $border;
+  border-radius: $radius-lg;
+  background: $bg;
+  box-shadow: $shadow-dialog;
+}
+
+.update-card-title {
+  font-weight: $font-weight-semibold;
+  > .bi { color: $primary; }
+}
+
+.update-card-text {
+  margin-top: $spacing-xs;
+  font-size: $font-size-sm;
+  color: $text-muted;
+}
+
+.update-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: $spacing-sm;
+  margin-top: $spacing-md;
+}

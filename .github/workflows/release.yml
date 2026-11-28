@@ -14,8 +14,19 @@
 #   for that version if there is one, otherwise GitHub's notes from the merged PRs.
 # - Nothing is committed back: main is closed to the workflow's token, so the
 #   repo's version files only move when someone raises them.
-# - Run it by hand (Actions → Release → Run workflow): builds all three with the
-#   next version. No signing, no release.
+# - The in-app updater: when the TAURI_SIGNING_PRIVATE_KEY secret is set, the release
+#   carries the update files with their signatures (macOS .app.tar.gz, the AppImage, and
+#   the Windows installer, signed after SignPath so the signature covers the final bytes)
+#   and latest.json, which every installed Querybook reads from
+#   releases/latest/download/latest.json. SHA256SUMS.txt lists every file. The release is
+#   created as a draft and published once everything is uploaded, so latest.json never
+#   points at a missing file.
+# - Run it by hand (Actions → Release → Run workflow):
+#   - channel "build-only": builds all three with the next version. No signing, no release.
+#   - channel "staging": builds the version you give (e.g. 1.2.901) as a prerelease
+#     staging-<version>, whose updater reads the fixed prerelease "updater-staging" instead
+#     of the real releases. Install two staging builds to test an update end to end
+#     without touching anyone's app. No SignPath.
 name: Release
 
 on:
@@ -23,6 +34,16 @@ on:
     branches: [main]
     paths-ignore: ["**.md"]
   workflow_dispatch:
+    inputs:
+      channel:
+        description: "build-only, or staging (a prerelease for testing updates)"
+        type: choice
+        options: [build-only, staging]
+        default: build-only
+      staging_version:
+        description: "Staging only: the version to build, higher than the last one installed (e.g. 1.2.901)"
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -43,11 +64,15 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       release: ${{ steps.version.outputs.release }}
+      channel: ${{ steps.version.outputs.channel }}
     steps:
       - uses: actions/checkout@v7
 
       - name: Next version
         id: version
+        env:
+          CHANNEL_INPUT: ${{ inputs.channel }}
+          STAGING_VERSION: ${{ inputs.staging_version }}
         run: |
           floor=$(node -p "require('./src-tauri/tauri.conf.json').version")
           # Every vX.Y.Z tag counts, even one whose release is still a draft: its number is taken.
@@ -55,13 +80,19 @@ jobs:
             | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)
           IFS=. read -r major minor patch <<< "${last:-0.0.0}"
           version=$(printf '%s\n' "$major.$minor.$((patch + 1))" "$floor" | sort -V | tail -n 1)
-          echo "Last tag v${last:-none}, tauri.conf.json $floor: this is $version."
-          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Last tag v${last:-none}, tauri.conf.json $floor: next is $version."
           if [ "$GITHUB_EVENT_NAME" = push ]; then
-            echo "release=true" >> "$GITHUB_OUTPUT"
+            { echo "version=$version"; echo "release=true"; echo "channel=stable"; } >> "$GITHUB_OUTPUT"
+          elif [ "$CHANNEL_INPUT" = staging ]; then
+            if ! [[ "$STAGING_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::A staging build needs staging_version, like 1.2.901"
+              exit 1
+            fi
+            echo "Staging build $STAGING_VERSION."
+            { echo "version=$STAGING_VERSION"; echo "release=true"; echo "channel=staging"; } >> "$GITHUB_OUTPUT"
           else
             echo "Started by hand: build only."
-            echo "release=false" >> "$GITHUB_OUTPUT"
+            { echo "version=$version"; echo "release=false"; echo "channel=build-only"; } >> "$GITHUB_OUTPUT"
           fi
 
   build:
@@ -77,15 +108,19 @@ jobs:
             os: macos-latest # Apple Silicon
             trunk: trunk-aarch64-apple-darwin.tar.gz
             bundles: app,dmg
+            updater: true
           - name: Windows
             os: windows-latest
             trunk: trunk-x86_64-pc-windows-msvc.zip
             bundles: nsis
+            # The installer's update signature is made after SignPath signs it (release job).
+            updater: false
           - name: Linux
             # The oldest supported Ubuntu, so the AppImage runs on older distributions too.
             os: ubuntu-22.04
             trunk: trunk-x86_64-unknown-linux-gnu.tar.gz
             bundles: appimage,deb,rpm
+            updater: true
     steps:
       - uses: actions/checkout@v7
 
@@ -140,14 +175,27 @@ jobs:
             libayatana-appindicator3-dev libxdo-dev patchelf rpm
 
       # The version goes in here, not in tauri.conf.json: bundle names and metadata follow it.
+      # Update files (.app.tar.gz and .sig) only when the signing key is set up; staging
+      # builds read the staging manifest instead of the real one.
       - name: Build
         shell: bash
         env:
           VERSION: ${{ needs.plan.outputs.version }}
+          CHANNEL: ${{ needs.plan.outputs.channel }}
+          HAS_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ matrix.updater && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ matrix.updater && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
         run: |
           trunk --version
-          npx --yes "@tauri-apps/cli@$TAURI_CLI_VERSION" build --bundles ${{ matrix.bundles }} \
-            --config "{\"version\":\"$VERSION\"}"
+          updater=false
+          if [ "${{ matrix.updater }}" = true ] && [ "$HAS_KEY" = true ]; then updater=true; fi
+          config="{\"version\":\"$VERSION\",\"bundle\":{\"createUpdaterArtifacts\":$updater}"
+          if [ "$CHANNEL" = staging ]; then
+            config="$config,\"plugins\":{\"updater\":{\"endpoints\":[\"https://github.com/$GITHUB_REPOSITORY/releases/download/updater-staging/latest.json\"]}}"
+          fi
+          config="$config}"
+          echo "$config"
+          npx --yes "@tauri-apps/cli@$TAURI_CLI_VERSION" build --bundles ${{ matrix.bundles }} --config "$config"
 
       - name: Collect the files
         shell: bash
@@ -159,10 +207,19 @@ jobs:
             # ditto keeps the app's (ad-hoc) signature intact; a plain zip breaks it.
             ditto -c -k --sequesterRsrc --keepParent target/release/bundle/macos/Querybook.app \
               "out/Querybook_${version}_aarch64.app.zip"
+            # The updater's bundle and its signature, named per version like the other files.
+            if [ -f target/release/bundle/macos/Querybook.app.tar.gz ]; then
+              cp target/release/bundle/macos/Querybook.app.tar.gz "out/Querybook_${version}_aarch64.app.tar.gz"
+              cp target/release/bundle/macos/Querybook.app.tar.gz.sig "out/Querybook_${version}_aarch64.app.tar.gz.sig"
+            fi
           elif [ "$RUNNER_OS" = Linux ]; then
             cp target/release/bundle/appimage/*.AppImage \
               target/release/bundle/deb/*.deb \
               target/release/bundle/rpm/*.rpm out/
+            for sig in target/release/bundle/appimage/*.AppImage.sig target/release/bundle/deb/*.deb.sig \
+              target/release/bundle/rpm/*.rpm.sig; do
+              if [ -f "$sig" ]; then cp "$sig" out/; fi
+            done
           else
             cp target/release/bundle/nsis/*-setup.exe out/
           fi
@@ -176,11 +233,11 @@ jobs:
 
   # SignPath Foundation signs the installer for free (open-source projects).
   # Every request waits for an approver to approve it on signpath.io, so this
-  # only runs for a release, and only once the SignPath variables are set.
+  # only runs for a real release, and only once the SignPath variables are set.
   sign-windows:
     name: Sign the Windows installer (SignPath)
     needs: [plan, build]
-    if: needs.plan.outputs.release == 'true' && vars.SIGNPATH_ORGANIZATION_ID != ''
+    if: needs.plan.outputs.channel == 'stable' && vars.SIGNPATH_ORGANIZATION_ID != ''
     runs-on: ubuntu-latest
     timeout-minutes: 250
     permissions:
@@ -225,13 +282,15 @@ jobs:
   release:
     name: Publish the GitHub Release
     needs: [plan, build, sign-windows]
-    # Runs when signing succeeded, or was skipped because SignPath isn't set up yet.
+    # Runs when signing succeeded, or was skipped (SignPath isn't set up, or a staging build).
     if: ${{ !cancelled() && needs.plan.outputs.release == 'true' && needs.build.result == 'success' && needs.sign-windows.result != 'failure' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
     env:
       VERSION: ${{ needs.plan.outputs.version }}
+      CHANNEL: ${{ needs.plan.outputs.channel }}
+      HAS_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
     steps:
       - uses: actions/checkout@v7
 
@@ -241,26 +300,209 @@ jobs:
           pattern: querybook-*
           merge-multiple: true
 
-      - name: Release notes from CHANGELOG.md
+      # The Windows installer is signed for the updater here, after SignPath changed its
+      # bytes. deb and rpm get a signature too if the bundler didn't make one.
+      - name: Sign the update files
+        if: env.HAS_KEY == 'true'
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          cd out
+          rm -f ./*-setup.exe.sig
+          for f in ./*-setup.exe ./*.deb ./*.rpm; do
+            if [ ! -f "$f" ] || [ -f "$f.sig" ]; then continue; fi
+            npx --yes "@tauri-apps/cli@$TAURI_CLI_VERSION" signer sign "$f"
+          done
+          ls -l
+
+      # Every signature must check out against the public key the app ships with, or
+      # installed apps would refuse the update.
+      - name: Verify the update signatures
+        if: env.HAS_KEY == 'true'
+        run: |
+          sudo apt-get install -y --no-install-recommends minisign > /dev/null
+          node -p "require('./src-tauri/tauri.conf.json').plugins.updater.pubkey" | base64 -d > "$RUNNER_TEMP/updater.pub"
+          for sig in out/*.sig; do
+            base64 -d "$sig" > "$RUNNER_TEMP/check.minisig"
+            minisign -V -q -p "$RUNNER_TEMP/updater.pub" -m "${sig%.sig}" -x "$RUNNER_TEMP/check.minisig"
+            echo "ok ${sig%.sig}"
+          done
+
+      - name: Release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           awk -v v="[$VERSION]" 'index($0, "## " v) == 1 {on = 1; next} /^## \[/ {if (on) exit} on' CHANGELOG.md > notes.md
-          if [ -s notes.md ]; then cat notes.md; else echo "No CHANGELOG section for $VERSION: GitHub writes the notes."; fi
+          if [ ! -s notes.md ]; then
+            echo "::warning::No CHANGELOG section for $VERSION: using GitHub's notes (users see these in the update prompt)."
+            gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" -f tag_name="v$VERSION" \
+              -f target_commitish="$GITHUB_SHA" --jq .body > notes.md || echo "Querybook $VERSION" > notes.md
+          fi
+          cat notes.md
 
+      - name: Updater manifest and checksums
+        run: |
+          if [ "$CHANNEL" = staging ]; then tag="staging-$VERSION"; else tag="v$VERSION"; fi
+          echo "TAG=$tag" >> "$GITHUB_ENV"
+          # Every file carries this version (a stale name would break the manifest's links).
+          for f in out/*; do
+            case "$f" in
+              *"_${VERSION}_"* | *"-${VERSION}-"*) ;;
+              *) echo "::error::$f doesn't carry version $VERSION"; exit 1 ;;
+            esac
+          done
+          (cd out && sha256sum -- * > "$RUNNER_TEMP/SHA256SUMS.txt")
+          mv "$RUNNER_TEMP/SHA256SUMS.txt" out/
+          if [ "$HAS_KEY" = true ]; then
+            node scripts/release/latest-json.mjs out "$VERSION" "$tag" notes.md > out/latest.json
+            cat out/latest.json
+          else
+            echo "::warning::TAURI_SIGNING_PRIVATE_KEY isn't set: no update files, so installed apps won't be offered this release."
+          fi
+
+      # Created as a draft, then published once every file is up: releases/latest (and so
+      # latest.json) keeps pointing at the previous release until this one is complete.
       - name: Publish the release (creates the tag)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          tag="v$VERSION"
           ls -l out
-          if [ "${{ needs.sign-windows.result }}" != success ]; then
+          if [ "$CHANNEL" = stable ] && [ "${{ needs.sign-windows.result }}" != success ]; then
             echo "::warning::The Windows installer is not signed (SignPath isn't set up)."
           fi
-          if [ -s notes.md ]; then notes=(--notes-file notes.md); else notes=(--generate-notes); fi
-          if gh release view "$tag" > /dev/null 2>&1; then
-            # A draft left by a run that failed while uploading: finish it.
-            gh release upload "$tag" out/* --clobber
-            gh release edit "$tag" --target "$GITHUB_SHA" --draft=false
+          if [ "$CHANNEL" = staging ]; then
+            flags=(--prerelease); title="Querybook $VERSION (staging)"
           else
-            gh release create "$tag" out/* --target "$GITHUB_SHA" \
-              --title "Querybook $VERSION" "${notes[@]}"
+            flags=(); title="Querybook $VERSION"
           fi
+          if ! gh release view "$TAG" > /dev/null 2>&1; then
+            gh release create "$TAG" --draft --target "$GITHUB_SHA" --title "$title" --notes-file notes.md "${flags[@]}"
+          fi
+          # A draft left by a run that failed while uploading is finished the same way.
+          gh release upload "$TAG" out/* --clobber
+          if [ "$CHANNEL" = staging ]; then
+            gh release edit "$TAG" --draft=false --prerelease
+          else
+            gh release edit "$TAG" --target "$GITHUB_SHA" --draft=false --latest
+          fi
+
+      # Staging builds read their manifest from this one fixed prerelease.
+      - name: Point the staging updater at this build
+        if: env.CHANNEL == 'staging' && env.HAS_KEY == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view updater-staging > /dev/null 2>&1; then
+            gh release create updater-staging --prerelease --target "$GITHUB_SHA" \
+              --title "Updater staging channel" --notes "latest.json for staging builds. Not for download."
+          fi
+          gh release upload updater-staging out/latest.json --clobber
+
+  # ── After a real release: package managers and the website ──
+  # Each runs only when its repository variable is "true" (see packaging/README.md), and a
+  # failure here never undoes the release.
+
+  winget:
+    name: winget
+    needs: [plan, release]
+    if: needs.plan.outputs.channel == 'stable' && vars.WINGET_ENABLED == 'true'
+    runs-on: windows-latest
+    steps:
+      - uses: vedantmgoyal9/winget-releaser@v2
+        with:
+          identifier: KevalKThumar.Querybook
+          release-tag: v${{ needs.plan.outputs.version }}
+          installers-regex: '_x64-setup\.exe$'
+          max-versions-to-keep: 5
+          token: ${{ secrets.WINGET_TOKEN }}
+
+  homebrew:
+    name: Homebrew tap
+    needs: [plan, release]
+    if: needs.plan.outputs.channel == 'stable' && vars.HOMEBREW_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: querybook
+      - uses: actions/checkout@v7
+        with:
+          repository: KevalKThumar/homebrew-tap
+          ssh-key: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
+          path: tap
+      - name: Update the cask
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "v$VERSION" --repo "$GITHUB_REPOSITORY" --pattern SHA256SUMS.txt --dir .
+          sha=$(grep "Querybook_${VERSION}_aarch64.dmg" SHA256SUMS.txt | cut -d' ' -f1)
+          if [ -z "$sha" ]; then echo "::error::No checksum for the dmg"; exit 1; fi
+          mkdir -p tap/Casks
+          sed -e "s/@VERSION@/$VERSION/" -e "s/@SHA256@/$sha/" querybook/packaging/homebrew/querybook.rb.in > tap/Casks/querybook.rb
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks/querybook.rb
+          git diff --cached --quiet || git commit -m "querybook $VERSION"
+          git push
+
+  aur:
+    name: AUR
+    needs: [plan, release]
+    if: needs.plan.outputs.channel == 'stable' && vars.AUR_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Fill in the PKGBUILD
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "v$VERSION" --repo "$GITHUB_REPOSITORY" --pattern SHA256SUMS.txt --dir .
+          sha=$(grep "Querybook_${VERSION}_amd64.deb" SHA256SUMS.txt | cut -d' ' -f1)
+          if [ -z "$sha" ]; then echo "::error::No checksum for the deb"; exit 1; fi
+          sed -e "s/@VERSION@/$VERSION/" -e "s/@SHA256@/$sha/" packaging/aur/PKGBUILD.in > PKGBUILD
+      - uses: KSXGitHub/github-actions-deploy-aur@v4.2.0
+        with:
+          pkgname: querybook-bin
+          pkgbuild: ./PKGBUILD
+          commit_username: ${{ secrets.AUR_USERNAME }}
+          commit_email: ${{ secrets.AUR_EMAIL }}
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          commit_message: "querybook-bin ${{ needs.plan.outputs.version }}"
+
+  linux-repo:
+    name: apt and dnf (Cloudsmith)
+    needs: [plan, release]
+    if: needs.plan.outputs.channel == 'stable' && vars.CLOUDSMITH_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+      CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_API_KEY }}
+      OWNER: ${{ vars.CLOUDSMITH_OWNER }}
+    steps:
+      - name: Push the .deb and .rpm
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "v$VERSION" --repo "$GITHUB_REPOSITORY" --pattern '*.deb' --pattern '*.rpm' --dir pkgs
+          pip install --quiet cloudsmith-cli
+          cloudsmith push deb "$OWNER/querybook/any-distro/any-version" pkgs/*.deb
+          cloudsmith push rpm "$OWNER/querybook/any-distro/any-version" pkgs/*.rpm
+
+  website:
+    name: Rebuild the website
+    needs: [plan, release]
+    if: needs.plan.outputs.channel == 'stable' && vars.WEBSITE_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Tell querybook-website about the release
+        env:
+          GH_TOKEN: ${{ secrets.WEBSITE_DISPATCH_TOKEN }}
+        run: |
+          gh api repos/KevalKThumar/querybook-website/dispatches \
+            -f event_type=querybook-release -f "client_payload[version]=${{ needs.plan.outputs.version }}"

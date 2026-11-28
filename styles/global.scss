@@ -38,3 +38,13 @@
 @use "../src/database/dialogs/import_csv_dialog/import_csv_dialog";
 @use "../src/database/dialogs/export_sql_dialog/export_sql_dialog";
 @use "../src/database/dialogs/snippets_dialog/snippets_dialog";
+
+// ── Support module (Help, crash reports, settings) ──
+@use "../src/support/components/help_menu/help_menu";
+@use "../src/support/dialogs/crash_prompt_dialog/crash_prompt_dialog";
+@use "../src/support/dialogs/crash_reports_dialog/crash_reports_dialog";
+@use "../src/support/dialogs/about_dialog/about_dialog";
+@use "../src/support/dialogs/shortcuts_dialog/shortcuts_dialog";
+@use "../src/support/dialogs/settings_dialog/settings_dialog";
+@use "../src/support/components/update_banner/update_banner";
+@use "../src/support/dialogs/update_dialog/update_dialog";

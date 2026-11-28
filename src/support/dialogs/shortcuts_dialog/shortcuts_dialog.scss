@@ -1,0 +1,31 @@
+@use "../../../../styles/variables" as *;
+
+.shortcuts-body {
+  columns: 2 320px;
+  column-gap: $spacing-xl;
+}
+
+.shortcuts-section {
+  break-inside: avoid;
+  margin-bottom: $spacing-lg;
+}
+
+.shortcuts-title {
+  margin-bottom: $spacing-xs;
+  font-weight: $font-weight-semibold;
+  color: $text-muted;
+}
+
+.shortcuts-row {
+  display: grid;
+  grid-template-columns: 150px 1fr;
+  gap: $spacing-sm;
+  padding: 3px 0;
+  font-size: $font-size-sm;
+
+  kbd {
+    justify-self: start;
+    font-size: $font-size-xs;
+    white-space: nowrap;
+  }
+}

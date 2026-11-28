@@ -2,6 +2,21 @@
 
 All notable changes to Querybook are listed here. Versions follow [Semantic Versioning](https://semver.org).
 
+## [1.2.0] — Unreleased
+
+### Added
+- **Help** button in the toolbar and on the Welcome screen: Keyboard Shortcuts (⌘/ or Ctrl+/), Settings (⌘, or Ctrl+,), Report a Problem, Crash Reports, Open Logs Folder, Querybook on GitHub and About.
+- **Crash reports**, kept on this computer. A crash, a window that stops working, or a window that never finishes loading leaves a report; the next launch offers to show it. The Crash Reports viewer shows everything a report contains, and you can copy it, save it, or open a prefilled GitHub issue. Reports never contain SQL, data, keys or file names.
+- A window that stops working, or stays blank, offers **Reload Window**, which keeps the changes waiting to be written.
+- About and Settings dialogs. Settings sets the theme for every window.
+- **Updates.** Querybook asks once whether to check for updates automatically (at launch and once a day), and Help › Check for Updates… checks any time. A new version shows its release notes; **Update Now** downloads, installs and restarts, **Later** waits until the next launch, **Skip This Version** waits for the next one. Updates are signed and never install while changes are waiting to be written. Installs from a .deb or .rpm are told about updates and pointed at the download page. **If you have 1.1.x, install 1.2.0 by hand once; later versions arrive through the app.**
+
+### Fixed
+- A window that reloads (for example after the recovery above) shows its unwritten changes again: the unsaved badge, Write / Revert and the close prompt come back.
+
+### Security
+- Import SQL runs a script under a SQLite authorizer: it may change this database's tables and rows, which wait for Write Changes, and nothing else. ATTACH, re-keying, file-level PRAGMAs, VACUUM, savepoint control, `load_extension()` and `sqlcipher_export()` are refused with a message naming the statement.
+
 ## [1.1.3] — 2026-11-24
 
 ### Added

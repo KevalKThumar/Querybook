@@ -32,6 +32,39 @@ pub fn may_end_txn(statement: &str) -> bool {
     starts_with_keyword(statement, &["COMMIT", "END", "RELEASE"])
 }
 
+/// Statements Import SQL refuses, as the keyword to name in the error, or None.
+/// `SAVEPOINT`, `RELEASE` and `ROLLBACK` could write or throw away the pending
+/// changes without the user choosing to; `VACUUM` rewrites the file (and
+/// `VACUUM INTO` writes a new one); `ATTACH` and `DETACH` reach other files.
+pub fn import_refuses(statement: &str) -> Option<&'static str> {
+    const REFUSED: [&str; 6] = ["ATTACH", "DETACH", "VACUUM", "SAVEPOINT", "RELEASE", "ROLLBACK"];
+    REFUSED.into_iter().find(|w| starts_with_keyword(statement, &[*w]))
+}
+
+/// PRAGMAs Import SQL runs. `write`: the script may also set it. The rest
+/// (key, rekey, journal_mode, writable_schema…) change how the file is stored
+/// or locked, outside the pending changes, so a script doesn't get to run them.
+pub fn import_allows_pragma(name: &str, sets_value: bool) -> bool {
+    /// Checks and lookups; their argument is a table or index name, or a row limit.
+    const READ: [&str; 11] = [
+        "foreign_key_check",
+        "foreign_key_list",
+        "index_info",
+        "index_list",
+        "index_xinfo",
+        "integrity_check",
+        "quick_check",
+        "schema_version",
+        "table_info",
+        "table_list",
+        "table_xinfo",
+    ];
+    const WRITE: [&str; 4] = ["application_id", "defer_foreign_keys", "foreign_keys", "user_version"];
+    let is = |list: &[&str]| list.iter().any(|p| p.eq_ignore_ascii_case(name));
+    // schema_version is the one lookup whose argument would write (and can corrupt the file).
+    is(&WRITE) || (is(&READ) && !(sets_value && name.eq_ignore_ascii_case("schema_version")))
+}
+
 /// Tokens that aren't comments or whitespace, with the byte offset each one ends at.
 fn significant_tokens(src: &str) -> Vec<(usize, Tok, &str)> {
     let mut end = 0;
@@ -361,6 +394,25 @@ mod tests {
         assert!(!is_txn_end("ROLLBACK"));
         assert!(may_end_txn("COMMIT") && may_end_txn("end") && may_end_txn("RELEASE SAVEPOINT querybook"));
         assert!(!may_end_txn("ROLLBACK") && !may_end_txn("ROLLBACK TO querybook") && !may_end_txn("UPDATE t SET x = 1"));
+    }
+
+    #[test]
+    fn what_import_sql_refuses() {
+        assert_eq!(import_refuses("ATTACH DATABASE 'x.db' AS a"), Some("ATTACH"));
+        assert_eq!(import_refuses("-- tidy\n vacuum into 'copy.db'"), Some("VACUUM"));
+        assert_eq!(import_refuses("RELEASE querybook"), Some("RELEASE"));
+        assert_eq!(import_refuses("/* undo */ ROLLBACK TO querybook"), Some("ROLLBACK"));
+        assert_eq!(import_refuses("savepoint querybook"), Some("SAVEPOINT"));
+        assert_eq!(import_refuses("DETACH a"), Some("DETACH"));
+        assert_eq!(import_refuses("INSERT INTO t VALUES ('ATTACH')"), None);
+        assert_eq!(import_refuses("CREATE TRIGGER tr AFTER INSERT ON t BEGIN SELECT RAISE(ROLLBACK, 'no'); END"), None);
+
+        assert!(import_allows_pragma("foreign_keys", true) && import_allows_pragma("DEFER_FOREIGN_KEYS", true));
+        assert!(import_allows_pragma("user_version", true) && import_allows_pragma("table_xinfo", true));
+        assert!(import_allows_pragma("schema_version", false) && !import_allows_pragma("schema_version", true));
+        for refused in ["key", "rekey", "journal_mode", "writable_schema", "cipher_page_size", "temp_store_directory"] {
+            assert!(!import_allows_pragma(refused, true) && !import_allows_pragma(refused, false), "{refused}");
+        }
     }
 
     #[test]

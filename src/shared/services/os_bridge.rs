@@ -13,10 +13,14 @@ use wasm_bindgen::prelude::*;
 export async function __invoke(cmd, args) {
     return await window.__TAURI__.core.invoke(cmd, args);
 }
+export function __listen(event, callback) {
+    window.__TAURI__.event.listen(event, (e) => callback(e.payload));
+}
 "#)]
 extern "C" {
     #[wasm_bindgen(catch)]
     async fn __invoke(cmd: &str, args: JsValue) -> Result<JsValue, JsValue>;
+    fn __listen(event: &str, callback: &Closure<dyn FnMut(JsValue)>);
 }
 
 /// Command args for commands that take none.
@@ -37,6 +41,18 @@ impl OsBridge {
             Err(e) => Err(serde_wasm_bindgen::from_value::<AppError>(e.clone())
                 .unwrap_or_else(|_| bridge_error(e.as_string().unwrap_or_else(|| format!("{cmd}: {e:?}"))))),
         }
+    }
+
+    /// Run `on_event` with each payload of a backend event, for the window's lifetime.
+    pub fn listen<T: DeserializeOwned + 'static>(event: &str, mut on_event: impl FnMut(T) + 'static) {
+        let callback = Closure::<dyn FnMut(JsValue)>::new(move |payload: JsValue| {
+            if let Ok(value) = serde_wasm_bindgen::from_value(payload) {
+                on_event(value);
+            }
+        });
+        __listen(event, &callback);
+        // ponytail: window-lifetime listener, intentionally never removed.
+        callback.forget();
     }
 }
 

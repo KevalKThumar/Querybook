@@ -23,8 +23,8 @@ workflow (browse, edit, run SQL, change the schema, import and export) with a
 cleaner interface, and every database opens in its own window.
 
 It's built with [Tauri 2](https://tauri.app) and [Leptos](https://leptos.dev) and is
-written entirely in Rust. The UI is compiled to WebAssembly. The app makes no network
-requests: your data never leaves your computer.
+written entirely in Rust. The UI is compiled to WebAssembly. Your data never leaves your
+computer: the only network request Querybook makes is the update check, and only if you allow it.
 
 ## Features
 
@@ -81,6 +81,19 @@ requests: your data never leaves your computer.
 - The history stays on this computer, in Querybook's app data folder, and never goes into the database file. Each database has its own, and it's kept until you **Clear history**. It belongs to the file's path, so a moved or renamed database starts a new one.
 - For an encrypted database the history is encrypted with that database's key, and changes when the key does. Only someone who can open the database can read it.
 - Up to 1,000 rows of each save are kept with their values; past that, rows are only counted. Long text is cut at 200 characters, and BLOBs are shown by size.
+
+**Updates**
+- Querybook asks once whether to check for updates automatically. With your yes it checks at launch and once a day; **Help › Check for Updates…** always works. You can change your answer in Settings.
+- When a new version is out, a small card says so. **What's New…** shows the release notes, then **Update Now** downloads it, installs it and restarts; **Later** waits until the next launch; **Skip This Version** waits for the one after.
+- An update never installs while a window has unwritten changes: write or revert them first.
+- The check fetches one file, `latest.json`, from this repository's GitHub release. Nothing about you or your databases is sent. Every update is signed, and Querybook refuses one whose signature doesn't match.
+- Installed from a `.deb` or `.rpm`? You're told about the update and update through your package manager or the download page.
+
+**Help and crash reports**
+- The **Help** button (top right, also on the Welcome screen) has Keyboard Shortcuts (⌘/), Settings (⌘,), Report a Problem, Crash Reports, Open Logs Folder and About.
+- If Querybook quits, a window stops working, or a window stays blank, a crash report is saved **on your computer**. The next launch offers to show it. Nothing is sent: **Crash Reports** shows the whole report, and you choose to copy it, save it, or open a prefilled GitHub issue to attach it to.
+- Reports and the log record what went wrong (the error, the code location, the version and OS), never your SQL, data, keys or file names.
+- A window that stops working, or doesn't finish loading, offers **Reload Window**. Reloading keeps the changes you haven't written yet.
 
 ## Install
 
@@ -144,6 +157,8 @@ On macOS, Ctrl works wherever ⌘ is listed. On Windows, use Ctrl for ⌘, Alt f
 | Window | ⌘O / ⌘N | Open / new database |
 | | ⌘T | New SQL tab |
 | | ⌘S | Write changes (when there are any) |
+| | ⌘/ | Keyboard shortcuts |
+| | ⌘, | Settings |
 | | Esc | Close a dialog or menu |
 | Grid | Arrows, ⇧ + arrows | Move, extend a cell range |
 | | ⌘↑ / ⌘↓, Home / End, PageUp / PageDown | First / last row, first / last column, page |

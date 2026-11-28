@@ -5,11 +5,13 @@ use serde::{Deserialize, Serialize};
 
 pub mod complete;
 pub mod copy;
+pub mod encode;
 pub mod format;
 pub mod history;
 pub mod keys;
 pub mod lexer;
 pub mod sql;
+pub mod support;
 
 /// One SQLite value as it crosses the IPC bridge.
 ///
@@ -148,6 +150,10 @@ pub struct SessionInfo {
     pub kind: FileKind,
     pub connected: bool,
     pub encrypted: bool,
+    /// Changes are waiting for Write Changes. A reloaded window reads this, since the
+    /// pending savepoint lives in the backend session, not in the page.
+    #[serde(default)]
+    pub pending: bool,
 }
 
 /// Where `open_dialog` / `open_path` put the database.
