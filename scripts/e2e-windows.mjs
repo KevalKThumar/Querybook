@@ -3,7 +3,9 @@
 // SQLCipher-encrypted: Import SQL (a script's BEGIN … COMMIT waits for Write Changes;
 // ATTACH, re-keying and file-level PRAGMAs, VACUUM and extensions are refused), Ctrl+S,
 // Revert, the SQL editor (not held to Import SQL's limits), the close prompt
-// (Cancel / Don't Save), and encrypt → reopen → unlock.
+// (Cancel / Don't Save), encrypt → reopen → unlock, then the Help menu, Settings and About,
+// the blank-window watchdog (Reload keeps pending changes), a crash and the report the next
+// launch offers, and that the logs folder holds no paths, keys or data.
 //
 // It takes the mouse and keyboard for about a minute (WebView text fields only take real
 // input), so don't type while it runs. It borrows the clipboard and puts its text back.
@@ -13,7 +15,7 @@
 //   node scripts/e2e-windows.mjs                     # target/release/querybook.exe
 //   node scripts/e2e-windows.mjs "C:\path\to\querybook.exe"
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -70,6 +72,23 @@ const front = () => ad('--headed', 'focus-window', '--app', 'querybook');
 // `press --app` needs focus it can verify inside the WebView, which it rarely gets, so bring
 // Querybook to the front and press system-wide.
 const key = (combo) => { front(); ad('--headed', 'press', combo); };
+// agent-desktop has no names for / and , so those shortcuts go through Windows' SendKeys ("^/" = Ctrl+/).
+const sendKeys = (keys) => {
+  front();
+  spawnSync('powershell', ['-NoProfile', '-Command', `Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('${keys}')`]);
+};
+/** Answer a native dialog titled `title` by clicking `button`; false if it never came up. */
+function answer(title, button, ms = 10_000) {
+  for (let t = 0; t < ms; t += 500) {
+    const w = ad('list-windows', '--app', 'querybook').data?.find((x) => x.title === title);
+    if (w) {
+      const b = ad('find', '--window-id', w.id, '--role', 'button', '--name', button, '--exact', '--first').data?.match?.ref_id;
+      if (b) { ad('click', b); return true; }
+    }
+    sleep(500);
+  }
+  return false;
+}
 /** Centres of the elements with this role (and state), in screen pixels, top to bottom. */
 function centres(role, state) {
   const out = [];
@@ -224,6 +243,115 @@ check('the original key still unlocks it (the import did not re-key it)',
   waitGone('Unlock', 15000) && waitText('SQLCipher 4', 15000) ? 'unlocked' : 'still locked', 'unlocked');
 see("…and the encrypted import's table was written", 'secret');
 closeApp();
+
+// ── Help, Settings, About ──
+const DB2 = join(DIR, 'help.db');
+{ const d = new DatabaseSync(DB2); d.exec("CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT); INSERT INTO notes VALUES (1, 'private-note-text');"); d.close(); }
+// The updater's answer lives in the same app data as an installed Querybook: keep the user's.
+const updaterPrefs = join(process.env.APPDATA ?? '', 'com.kevalthumar.querybook', 'updater.json');
+const savedPrefs = existsSync(updaterPrefs) ? readFileSync(updaterPrefs) : null;
+if (savedPrefs) unlinkSync(updaterPrefs);
+process.on('exit', () => {
+  if (savedPrefs) writeFileSync(updaterPrefs, savedPrefs);
+  else if (existsSync(updaterPrefs)) unlinkSync(updaterPrefs);
+});
+launch(DB2);
+see('first launch asks once whether to check for updates', 'Check for updates automatically?', 15000);
+click('button', "Don't Check", '--exact');
+check("…Don't Check answers it, and the question goes away", waitGone('Check for updates automatically?') ? 'gone' : 'still there', 'gone');
+check('…and the answer is saved', existsSync(updaterPrefs) && JSON.parse(readFileSync(updaterPrefs, 'utf8')).auto_check, false);
+
+click('button', 'Help', '--exact');
+see('the Help button opens its menu', 'Crash Reports…');
+see('…with Check for Updates', 'Check for Updates…');
+click('button', 'Check for Updates…');
+// No release has a latest.json yet (or this is the newest): any of these answers is a working check.
+let answered = false;
+for (let i = 0; i < 15 && !answered; i++) {
+  answered = ['newest version', "Couldn't check for updates", 'is available'].some((t) => waitText(t, 700));
+}
+check('a manual update check answers', answered, true);
+key('escape');
+click('button', 'Help', '--exact');
+click('button', 'Keyboard Shortcuts');
+see('…Keyboard Shortcuts lists the shortcuts', 'Write changes (when there are any)');
+key('escape');
+waitGone('Write changes (when there are any)');
+sendKeys('^/');
+see('Ctrl+/ opens Keyboard Shortcuts', 'Format SQL');
+key('escape');
+sendKeys('^,');
+see('Ctrl+, opens Settings', 'Appearance');
+see('…with the automatic update switch', 'Check for updates automatically');
+key('escape');
+click('button', 'Help', '--exact');
+click('button', 'About Querybook');
+see('About shows the version', 'Version 1.');
+key('escape');
+
+// ── A blank window: the watchdog offers Reload, which keeps pending changes ──
+closeApp();
+spawn(APP, [DB2], { detached: true, stdio: 'ignore', env: { ...process.env, QUERYBOOK_E2E_NO_READY: '1' } }).unref();
+waitText('Import SQL', 30000);
+key('ctrl+t');
+ad('--headed', 'focus', ref('textfield', 'Write SQL here'));
+paste("INSERT INTO notes (body) VALUES ('pending-before-reload')");
+click('button', 'Run all');
+see('a change is pending before the reload', 'Unsaved changes');
+let stall;
+for (let i = 0; i < 60 && !stall; i++) {
+  stall = ad('list-windows', '--app', 'querybook').data?.find((w) => w.title === "This window didn't finish loading");
+  if (!stall) sleep(1000);
+}
+check('a window that never reports ready gets the watchdog dialog', Boolean(stall), true);
+if (stall) {
+  const b = ad('find', '--window-id', stall.id, '--role', 'button', '--name', 'Reload Window', '--exact', '--first').data?.match?.ref_id;
+  if (b) ad('click', b);
+}
+see('…Reload Window brings the window back with its changes still pending', 'Unsaved changes', 20000);
+check('…and nothing was written', JSON.stringify(q("SELECT count(*) AS n FROM notes WHERE body = 'pending-before-reload'", DB2)), '[{"n":0}]');
+// The watchdog fires again after the reload (the variable still ignores app_ready): Close Window
+// from it goes through the usual close prompt.
+check('…Close Window in the watchdog dialog asks about the pending change',
+  answer("This window didn't finish loading", 'Close Window', 40_000) && answer('Unsaved changes', "Don't Save"), true);
+for (let i = 0; i < 20 && running(); i++) sleep(500);
+check("…and Don't Save closes it without writing",
+  `${running()} ${JSON.stringify(q("SELECT count(*) AS n FROM notes WHERE body = 'pending-before-reload'", DB2))}`, 'false [{"n":0}]');
+
+// ── A crash: the next launch offers the report ──
+spawn(APP, [DB2], { detached: true, stdio: 'ignore', env: { ...process.env, QUERYBOOK_E2E_CRASH: 'backend' } }).unref();
+for (let i = 0; i < 30 && !running(); i++) sleep(300);
+for (let i = 0; i < 40 && running(); i++) sleep(300);
+check('the test crash ends the app', running(), false);
+launch(DB2);
+see('the next launch says Querybook quit unexpectedly', 'Querybook quit unexpectedly', 15000);
+click('button', 'View Report');
+see('…View Report shows the crash', 'E2E test crash', 10000);
+ad('clipboard-set', '');
+click('button', 'Copy');   // its name starts with the icon
+sleep(800);
+const copied = ad('clipboard-get').data?.text ?? '';
+check('…Copy puts the whole report on the clipboard', copied.includes('Kind: BackendPanic') && copied.includes('Backtrace:'), true);
+key('escape');
+closeApp();
+
+// Nothing private in the logs folder: no paths, passwords, or data from the databases.
+const logs = join(process.env.LOCALAPPDATA ?? '', 'com.kevalthumar.querybook', 'logs');
+const leaks = [];
+const scan = (dir) => {
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    const p = join(dir, e.name);
+    if (e.isDirectory()) scan(p);
+    else {
+      const text = readFileSync(p, 'utf8');
+      for (const secret of [DIR, slash(DIR), 'shop.db', 'help.db', KEY, 'private-note-text', 'pending-before-reload', 'Mallory']) {
+        if (text.includes(secret)) leaks.push(`${e.name}: ${secret}`);
+      }
+    }
+  }
+};
+if (existsSync(logs)) scan(logs);
+check('crash reports and the log hold no paths, keys or data', leaks.join(', '), '');
 
 console.log(fails ? `\n${fails} check(s) failed.` : '\nAll checks passed.');
 process.exitCode = fails ? 1 : 0;
