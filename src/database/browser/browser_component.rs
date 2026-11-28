@@ -121,6 +121,8 @@ pub fn Browser() -> impl IntoView {
         if let Some(path) = &i.path {
             DatabaseService::push_recent(path);
         }
+        // A reloaded page finds the session's pending changes still there.
+        in_txn.set(i.pending);
         info.set(Some(i));
         cipher_open.set(false);
         cipher_error.set(None);

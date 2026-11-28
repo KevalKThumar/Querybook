@@ -320,6 +320,7 @@ impl Session {
             kind: self.path.as_deref().map_or(FileKind::New, file_kind),
             connected,
             encrypted: lock(&self.key).is_some(),
+            pending: self.has_pending(),
         }
     }
 
@@ -643,6 +644,8 @@ pub mod tests {
         // refuses while changes are pending
         s.with_conn(|c| c.execute_batch("SAVEPOINT querybook; INSERT INTO t VALUES (4);").map_err(sql_err)).unwrap();
         assert!(s.has_pending());
+        // a reloaded window learns about them from the session info
+        assert!(s.info().pending);
         assert_eq!(s.set_encryption("", Some(pw("x"))).unwrap_err().kind, ErrorKind::Invalid);
     }
 

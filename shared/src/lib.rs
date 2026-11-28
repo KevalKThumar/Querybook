@@ -148,6 +148,10 @@ pub struct SessionInfo {
     pub kind: FileKind,
     pub connected: bool,
     pub encrypted: bool,
+    /// Changes are waiting for Write Changes. A reloaded window reads this, since the
+    /// pending savepoint lives in the backend session, not in the page.
+    #[serde(default)]
+    pub pending: bool,
 }
 
 /// Where `open_dialog` / `open_path` put the database.
